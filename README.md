@@ -20,7 +20,7 @@ will be a JSON object of the following form.
         "status" : ( "failure" | "success" )
     }
 
-The "status" property will be "failure" if the request could not be handled,
+The _status_ property will be "failure" if the request could not be handled,
 otherwise it will be "success".
 
 The response object may have more properties specific to a given request.
@@ -85,14 +85,14 @@ Infosquito end point with a query string of the form:
 * u=_user_ - This is the iPlant Collaborative user name whose home folder will 
 be searched.
 * n=_name-glob_ - The results will be folders having a name that matches 
-_name_glob_.
-* sort=_(_name_|_score_)_ - (OPTIONAL) Changes the sort order of the result set.
+_name-glob_.
+* sort=_(_ name _|_ score _)_ - (OPTIONAL) Changes the sort order of the result set.
 _name_ causes the result set to be sorted lexicographically by matched name, 
 while _sort_ causes it to be sorted by score in descending order.
-* window=_(limit|from_:_to)_ - (OPTIONAL) Changes the window on the results 
-being returned.  _window=limit_ will cause the first through limit-th, 
-inclusive, results to be returned.  _window=from:to_ will cause the from-th 
-through the to-th, inclusive, result to be returned.
+* window=_( limit | from_:_to )_ - (OPTIONAL) Changes the window on the results 
+being returned.  _window=limit_ will cause the first through _limit_-th, 
+inclusive, results to be returned.  _window=from:to_ will cause the _from_-th 
+through the _to_-th, inclusive, result to be returned.
 
 ### Response
 
