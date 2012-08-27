@@ -42,13 +42,14 @@ described shortly.  Here's the full form.
     
 Here are the possible error codes.
 
-**TODO list the error codes and what they mean**
+* "ERR_INVALID_QUERY_STRING" - This indicates that their is a missing parameter
+in the query string, or that the value of one of the parameters is invalid.
 
 
 ## Searching
 
-Infosquito supports searching by name for data folders that are readable by a 
-given user and inside that user's home folder.  The full folder name need not be 
+Infosquito supports searching by name for data files that are readable by a 
+given user and inside that user's home folder.  The full file name need not be 
 provided; if a glob is provided, all of the names matching the glob will be 
 returned.  
 
@@ -79,25 +80,22 @@ searched.  Authentication should be performed outside of this service.
 To perform a search, a GET request must be sent to the _search_ path at the 
 Infosquito end point with a query string of the form:
 
-    search?u=user&n=name-glob[&sort=field][&window=(limit|from:to)]
+    search?u=user&n=name\_glob[&sort=field][&window=(limit|from-to)]
           
 **Parameters**
 * u=_user_ - This is the iPlant Collaborative user name whose home folder will 
 be searched.
-* n=_name-glob_ - The results will be folders having a name that matches 
-_name-glob_.
-* sort=_(_ name _|_ score _)_ - (OPTIONAL) Changes the sort order of the result set.
-_name_ causes the result set to be sorted lexicographically by matched name, 
-while _sort_ causes it to be sorted by score in descending order.
-* window=_( limit | from_:_to )_ - (OPTIONAL) Changes the window on the results 
+* n=_name\_glob_ - The results will be files having a name that matches 
+_name\_glob_.
+* sort=_(_ name _|_ score _)_ - (OPTIONAL) Changes the sort order of the result 
+set.  _name_ causes the result set to be sorted lexicographically by matched 
+name, while _sort_ causes it to be sorted by score in descending order.
+* window=_( limit | from_-_to )_ - (OPTIONAL) Changes the window on the results 
 being returned.  _window=limit_ will cause the first through _limit_-th, 
 inclusive, results to be returned.  _window=from:to_ will cause the _from_-th 
 through the _to_-th, inclusive, result to be returned.
 
 ### Response
-
-If successful, up to 10 matches will be returned.  The matches will be sorted by
-score in descending order.
 
 The successful response body will be a JSON object of the following form.
 
@@ -108,8 +106,8 @@ The successful response body will be a JSON object of the following form.
             {
                 "index" : numeric index,
                 "score" : numeric score,
-                "path"  : the path to the folder,
-                "name"  : the folder name
+                "path"  : the path to the file,
+                "name"  : the file name
             }
         ]
     }
