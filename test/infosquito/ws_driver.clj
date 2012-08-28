@@ -1,4 +1,4 @@
 (ns infosquito.ws-driver
   (:use infosquito.core))
 
-(-main)
+(-main "--config" "dev-resources/local.properties")
