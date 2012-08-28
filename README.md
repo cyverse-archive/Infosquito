@@ -67,10 +67,10 @@ By default, only the first 10 results will be returned.  To return a different
 number of results, set the _window_ URL parameter to the desired number of 
 results.
 
-The results may be paged (or windowed) as well.  To do this, set the _window_ 
+The results may be windowed (or paged) as well.  To do this, set the _window_ 
 parameter to _n:m_, where _n_ is the index of the first result and _m_ is the
-index of the last result to return.  For example, to return the 11th through the 
-20th results, set _window_ to _11:20_.   
+index immediately after the last result to return.  For example, to return the 
+results with 11 <= index < 20, set _window_ to _11:20_.   
 
 **NOTE:**  No authentication is performed on the user whose home folder is being
 searched.  Authentication should be performed outside of this service.
@@ -91,9 +91,9 @@ _name\_glob_.
 set.  _name_ causes the result set to be sorted lexicographically by matched 
 name, while _sort_ causes it to be sorted by score in descending order.
 * window=_( limit | from_-_to )_ - (OPTIONAL) Changes the window on the results 
-being returned.  _window=limit_ will cause the first through _limit_-th, 
-inclusive, results to be returned.  _window=from:to_ will cause the _from_-th 
-through the _to_-th, inclusive, result to be returned.
+being returned.  _window=limit_ will cause the first _limit_-th, results to be 
+returned.  _window=from:to_ will cause the results with index _from_ to _to_ - 1
+to be returned.
 
 ### Response
 

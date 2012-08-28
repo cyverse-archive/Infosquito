@@ -49,7 +49,7 @@
                        #(is (= % 
                                {:action  "search"
                                 :status  "success"
-                                :matches [{:index 1
+                                :matches [{:index 0
                                            :score 3
                                            :path  "/iplant/home/user/name"
                                            :name  "name"}]}))))
@@ -72,7 +72,7 @@
                          #(is (= % 
                                  {:action  "search"
                                   :status  "success"
-                                  :matches [{:index 1
+                                  :matches [{:index 0
                                              :score 3
                                              :path  "/iplant/home/user/name"
                                              :name  "name"}]}))))
@@ -85,11 +85,11 @@
                     :sort "bad"})))
 
 (deftest test-search-response-with-window
-  (testing "1-10 is default window"
+  (testing "[0-10) is default window"
     (let [routes      (mk-routes "url")
           default-res (search routes "user" "name" nil nil)]
       (is (= default-res (search routes "user" "name" nil "10")))
-      (is (= default-res (search routes "user" "name" nil "1-10")))))
+      (is (= default-res (search routes "user" "name" nil "0-10")))))
   (testing "windowing with limit"
     (chk-search-response {:user   "user" 
                           :name   "name" 
@@ -98,19 +98,19 @@
                          #(is (= % 
                                  {:action  "search"
                                   :status  "success"
-                                  :matches [{:index 1
+                                  :matches [{:index 0
                                              :score 3
                                              :path  "/iplant/home/user/name"
                                              :name  "name"}]}))))  
   (testing "windowing with range"
     (chk-search-response {:user   "user" 
                           :name   "name" 
-                          :window "2-2"} 
+                          :window "1-2"} 
                          200 
                          #(is (= % 
                                  {:action  "search"
                                   :status  "success"
-                                  :matches [{:index 2
+                                  :matches [{:index 1
                                              :score 3
                                              :path  "/iplant/home/user/name"
                                              :name  "name"}]}))))  
@@ -121,10 +121,8 @@
     (is-window-bad "1-")
     (is-window-bad "1--20")
     (is-window-bad "1-20-300")
-    (is-window-bad "0")
     (is-window-bad "1.2")
-    (is-window-bad "0-100")
-    (is-window-bad "2-1")
+    (is-window-bad "2-2")
     (is-window-bad "1.2-4")
     (is-window-bad "1-4.2")))  
     

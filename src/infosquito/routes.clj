@@ -21,7 +21,7 @@
   [limit-param]
   (try
     (let [lval (Integer. limit-param)]
-      (if (> lval 0) [1 lval]))
+      (if (> lval 0) [0 lval]))
     (catch NumberFormatException _)))
 
 (defn- interpret-range-window
@@ -29,13 +29,13 @@
   (try
     (let [lb (Integer. lb-param)
           ub (Integer. ub-param)]
-      (if (and (> lb 0) (>= ub lb)) [lb ub]))
+      (if (> ub lb) [lb ub]))
     (catch NumberFormatException _)))
       
 (defn- interpret-window
   [wnd-param]
   (if (nil? wnd-param)
-    [1 10]
+    [0 10]
     (let [bnds-str (re-seq #"-|[^-]+" wnd-param)]  
       (condp = (count bnds-str)
         1 (interpret-limit-window (first bnds-str))
