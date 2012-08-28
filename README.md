@@ -6,7 +6,11 @@ content.
 
 ## Configuring Infosquito
 
-**TODO describe how to configure Infosquito.**
+Infosquito is configured in the standard way iPlant Collaborative configures web
+services.  It pulls it configuration from Zookeeper, with the properties loaded
+in Zookeeper by Clavin.
+
+There is a log4j configuration file at /etc/infosquito/log4j.properties.
 
 
 ## Responses
