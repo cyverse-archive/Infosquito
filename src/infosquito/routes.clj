@@ -1,7 +1,8 @@
 (ns infosquito.routes
   "Defines an implementation of the infosquito.handler/ROUTES protocol.  
    Currently, this is just stub code."
-  (:use infosquito.handler)
+  (:use infosquito.handler
+        infosquito.search)
   (:require [clojure.data.json :as dj]))
 
 (defn- interpret-name
@@ -74,15 +75,12 @@
       \* (fake-match (next glob))
       \\ (str (fnext glob) (fake-match (nnext glob)))
          (str (first glob) (fake-match (next glob))))))
-  
+
 (defn- mk-valid-search-resp
-  [user name-glob sort window]
-  (let [name     (fake-match name-glob)
-        response {:action  "search"
+  [matches]
+  (let [response {:action  "search"
                   :status  "success"
-                  :matches [{:index (first window)
-                             :path  (str "/iplant/home/" user "/" name)
-                             :name  name}]}]
+                  :matches matches}]
     {:status  200
      :headers {"Content-Type" "application/json"}
      :body    (dj/json-str response)}))
@@ -110,7 +108,7 @@
                 (nil? sort')
                 (nil? window'))
           (mk-bad-param-resp)
-          (mk-valid-search-resp user name' sort' window'))))
+          (mk-valid-search-resp (query es-client user name' sort' window')))))
     
     (unknown [_]
       (mk-help-resp help-url 404))

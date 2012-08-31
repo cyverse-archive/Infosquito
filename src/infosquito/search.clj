@@ -19,7 +19,7 @@
 
 ; TODO handle failure
 (defn query
-  [client user name sort-by from size]
+  [client user name sort-by window]
   (let [query (QueryBuilders/filteredQuery
                 (QueryBuilders/wildcardQuery "name" name)
                 (FilterBuilders/termFilter "user" user))
@@ -27,14 +27,17 @@
                 (prepareSearch (into-array ["data"]))
                 (setSearchType SearchType/DFS_QUERY_THEN_FETCH)
                 (setQuery query)
-                (setFrom from)
-                (setSize size))
+                (setFrom (window 0))
+                (setSize (- (window 1) (window 0))))
         resp  (.. (if (= sort-by :score)
                     req
                     (.addSort req "name" SortOrder/ASC))
                 execute
-                actionGet)]
-    (map (fn [hit] {:path (.id hit)
-                    :name (get (.getSource hit) "name")}) 
-         (.hits resp))))
+                actionGet)
+        hits  (.. resp hits hits)]
+    (for [idx (range (count hits))]
+      (let [hit (aget hits idx)]
+        {:index (+ idx (window 0))
+         :path  (.id hit)
+         :name  (get (.getSource hit) "name")}))))
   
