@@ -81,18 +81,18 @@
         response {:action  "search"
                   :status  "success"
                   :matches [{:index (first window)
-                             :score 3 
                              :path  (str "/iplant/home/" user "/" name)
                              :name  name}]}]
     {:status  200
      :headers {"Content-Type" "application/json"}
      :body    (dj/json-str response)}))
     
-(defn mk-routes [help-url]
+(defn mk-routes [es-client help-url]
   "This creates the routes to be used by infosquito.handler/mk-handler function
    as a destination for routed requests.
 
    PARAMETERS
+     es-client - The Elasticsearch client for search cluster
      help-url - The URL that points to the Infosquito help page.
 
    RETURN

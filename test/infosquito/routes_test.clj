@@ -7,14 +7,14 @@
 (defn- is-response-helpful 
   [route status]
   (let [url  "http://url"
-        resp (route (mk-routes url))]
+        resp (route (mk-routes nil url))]
     (is (= (:status resp) status))
     (is (= (:headers resp) {"Content-Type" "text/plain"}))
     (is (not (nil? (re-find (re-pattern url) (:body resp)))))))
   
 (defn- chk-search-response
   [req-params resp-status chk-body]
-  (let [resp (search (mk-routes "url") 
+  (let [resp (search (mk-routes nil "url") 
                      (:user req-params)
                      (:name req-params)
                      (:sort req-params)
@@ -50,7 +50,6 @@
                                {:action  "search"
                                 :status  "success"
                                 :matches [{:index 0
-                                           :score 3
                                            :path  "/iplant/home/user/name"
                                            :name  "name"}]}))))
 (deftest test-search-response-no-user
@@ -61,7 +60,7 @@
 
 (deftest test-search-response-with-sort
   (testing "sort by score is same as default"
-    (let [routes (mk-routes "url")]
+    (let [routes (mk-routes nil "url")]
       (is (= (search routes "user" "name" "score" nil) 
              (search routes "user" "name" nil nil)))))
   (testing "sort by name"
@@ -73,7 +72,6 @@
                                  {:action  "search"
                                   :status  "success"
                                   :matches [{:index 0
-                                             :score 3
                                              :path  "/iplant/home/user/name"
                                              :name  "name"}]}))))
   (testing "bad sort value"
@@ -86,7 +84,7 @@
 
 (deftest test-search-response-with-window
   (testing "[0-10) is default window"
-    (let [routes      (mk-routes "url")
+    (let [routes      (mk-routes nil "url")
           default-res (search routes "user" "name" nil nil)]
       (is (= default-res (search routes "user" "name" nil "10")))
       (is (= default-res (search routes "user" "name" nil "0-10")))))
@@ -99,7 +97,6 @@
                                  {:action  "search"
                                   :status  "success"
                                   :matches [{:index 0
-                                             :score 3
                                              :path  "/iplant/home/user/name"
                                              :name  "name"}]}))))  
   (testing "windowing with range"
@@ -111,7 +108,6 @@
                                  {:action  "search"
                                   :status  "success"
                                   :matches [{:index 1
-                                             :score 3
                                              :path  "/iplant/home/user/name"
                                              :name  "name"}]}))))  
   (testing "bad window values"

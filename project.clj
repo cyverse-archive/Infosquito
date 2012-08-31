@@ -10,12 +10,16 @@
                  [org.clojure/tools.cli "0.2.1"]
                  [org.clojure/tools.logging "0.2.3"]
                  [compojure "1.1.1"]
+                 [org.elasticsearch/elasticsearch "0.19.8"]
                  [ring "1.1.2"]]
   :profiles {:dev {:dependencies [[ring-mock "0.1.3"]]}}
   :plugins [[org.iplantc/lein-iplant-rpm "1.3.0-SNAPSHOT"]]
-  :repositories {"iplantCollaborative"
-                 "http://projects.iplantcollaborative.org/archiva/repository/internal/"}
   :iplant-rpm {:summary      "infosquito"
                :dependencies ["iplant-service-config >= 0.1.0-5"]
                :config-files ["log4j.properties"]
-               :config-path  "resources"})
+               :config-path  "resources"}
+  :repositories {"iplantCollaborative"
+                 "http://projects.iplantcollaborative.org/archiva/repository/internal/"
+                 
+                 "sonatype"
+                 "http://oss.sonatype.org/content/repositories/releases/"})

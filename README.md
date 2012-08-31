@@ -109,7 +109,6 @@ The successful response body will be a JSON object of the following form.
         "matches" : [
             {
                 "index" : numeric index,
-                "score" : numeric score,
                 "path"  : the path to the file,
                 "name"  : the file name
             }
