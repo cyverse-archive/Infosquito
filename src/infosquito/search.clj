@@ -2,7 +2,8 @@
   (:import [org.elasticsearch.client Client]
            [org.elasticsearch.action.search SearchType]
            [org.elasticsearch.index.query FilterBuilders QueryBuilders]
-           [org.elasticsearch.node NodeBuilder]))
+           [org.elasticsearch.node NodeBuilder]
+           [org.elasticsearch.search.sort SortOrder]))
 
 (defn with-elasticsearch
   [cluster service]
@@ -18,17 +19,22 @@
 
 ; TODO handle failure
 (defn query
-  [client user name from count sort-by]
+  [client user name sort-by from size]
   (let [query (QueryBuilders/filteredQuery
-                (QueryBuilders/termQuery "name" name)
+                (QueryBuilders/wildcardQuery "name" name)
                 (FilterBuilders/termFilter "user" user))
-        resp  (.. client
+        req   (.. client
                 (prepareSearch (into-array ["data"]))
                 (setSearchType SearchType/DFS_QUERY_THEN_FETCH)
                 (setQuery query)
                 (setFrom from)
-                (setSize count)
+                (setSize size))
+        resp  (.. (if (= sort-by :score)
+                    req
+                    (.addSort req "name" SortOrder/ASC))
                 execute
                 actionGet)]
-    (map #(.id %) (.. resp hits hits))))
+    (map (fn [hit] {:path (.id hit)
+                    :name (get (.getSource hit) "name")}) 
+         (.hits resp))))
   
