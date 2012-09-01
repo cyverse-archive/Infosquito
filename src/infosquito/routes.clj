@@ -1,8 +1,8 @@
 (ns infosquito.routes
   "Defines an implementation of the infosquito.handler/ROUTES protocol.  
    Currently, this is just stub code."
-  (:use infosquito.handler
-        infosquito.search)
+  (:use infosquito.elasticsearch
+        infosquito.handler)
   (:require [clojure.data.json :as dj]))
 
 (defn- interpret-name
@@ -108,7 +108,12 @@
                 (nil? sort')
                 (nil? window'))
           (mk-bad-param-resp)
-          (mk-valid-search-resp (query es-client user name' sort' window')))))
+          (mk-valid-search-resp (query es-client 
+                                       user 
+                                       name' 
+                                       sort' 
+                                       (window' 0)
+                                       (- (window' 1) (window' 0)))))))
     
     (unknown [_]
       (mk-help-resp help-url 404))

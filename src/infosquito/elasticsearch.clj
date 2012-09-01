@@ -1,4 +1,4 @@
-(ns infosquito.search
+(ns infosquito.elasticsearch
   (:import [org.elasticsearch.client Client]
            [org.elasticsearch.action.search SearchType]
            [org.elasticsearch.index.query FilterBuilders QueryBuilders]
@@ -19,7 +19,7 @@
 
 ; TODO handle failure
 (defn query
-  [client user name sort-by window]
+  [client user name sort-by from size]
   (let [query (QueryBuilders/filteredQuery
                 (QueryBuilders/wildcardQuery "name" name)
                 (FilterBuilders/termFilter "user" user))
@@ -27,8 +27,8 @@
                 (prepareSearch (into-array ["data"]))
                 (setSearchType SearchType/DFS_QUERY_THEN_FETCH)
                 (setQuery query)
-                (setFrom (window 0))
-                (setSize (- (window 1) (window 0))))
+                (setFrom from)
+                (setSize size))
         resp  (.. (if (= sort-by :score)
                     req
                     (.addSort req "name" SortOrder/ASC))
@@ -37,7 +37,7 @@
         hits  (.. resp hits hits)]
     (for [idx (range (count hits))]
       (let [hit (aget hits idx)]
-        {:index (+ idx (window 0))
+        {:index (+ idx from)
          :path  (.id hit)
          :name  (get (.getSource hit) "name")}))))
   

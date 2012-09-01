@@ -2,9 +2,9 @@
   "This namespace defines the entry point for Infosquito.  All state should be
    in here."
   (:gen-class)
-  (:use infosquito.handler 
-        infosquito.routes
-        infosquito.search)
+  (:use infosquito.elasticsearch
+        infosquito.handler 
+        infosquito.routes)
   (:require [clojure-commons.clavin-client :as cc]
             [clojure-commons.props :as cp]
             [clojure.tools.cli :as tc] 
