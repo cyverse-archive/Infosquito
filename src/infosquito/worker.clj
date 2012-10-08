@@ -1,5 +1,6 @@
 (ns infosquito.worker
   (:require [clojure.data.json :as dj]
+            [clojure.tools.logging :as tl]
             [clojurewerkz.elastisch.query :as ceq]
             [clojurewerkz.elastisch.rest :as cer]
             [clojurewerkz.elastisch.rest.document :as cerd]
@@ -27,7 +28,6 @@
 (def ^{:private true} index-entry-task "index entry")
 (def ^{:private true} index-members-task "index member")
 (def ^{:private true} remove-entry-task "remove entry")
-(def ^{:private true} verify-entry-task "verify entry")
 
 
 (defn- mk-task
@@ -86,15 +86,10 @@
 (defn- remove-missing-entries
   [worker]
   ;; TODO set up paging here.  Lazy sequence?
-  (doseq [path (cerr/ids-from 
-                 (cerd/search-all-indexes-and-types :query (ceq/match-all)))]
-    (post-task worker (mk-task verify-entry-task path))))
-
-
-(defn- verify-entry
-  [worker path]
   (cj/with-jargon (:irods-cfg worker) [irods]
-    (if-not (cj/exists? irods path) 
+    (doseq [path (remove #(cj/exists? irods %)
+                         (cerr/ids-from 
+                           (cerd/search-all-types index :query (ceq/match-all))))]
       (post-task worker (mk-task remove-entry-task path)))))
 
 
@@ -104,17 +99,15 @@
     (condp = (:type task)
       index-entry-task   (index-entry worker path)
       index-members-task (index-members worker path)
-      remove-entry-task  (remove-entry worker path)
-      verify-entry-task  (verify-entry worker path))))
+      remove-entry-task  (remove-entry worker path))))
 
 
 (defn mk-worker
-  [irods-cfg queue-client-ctor es-cluster task-ttr]
-  (let [ctx {:irod-cfg irods-cfg
-             :queue    (queue-client-ctor)
-             :task-ttr task-ttr}]
-    (cer/connect! es-cluster)
-    ctx))
+  [irods-cfg queue-client-ctor es-url task-ttr]
+  (cer/connect! es-url)  
+  {:irod-cfg irods-cfg
+   :queue    (queue-client-ctor)
+   :task-ttr task-ttr})
 
 
 (defn process-next-task 
@@ -128,5 +121,6 @@
 
 (defn sync-index
   [worker]
+  (tl/info "Synchronizing index with iRODS repository")
   (remove-missing-entries worker)
   (index-members worker "/iplant/home"))
