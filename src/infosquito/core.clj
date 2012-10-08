@@ -79,15 +79,18 @@
 
 (defn- parse-args
   [args]
-  (tc/cli args
-    ["-c" "--config" 
-     "sets the local configuration file to be read, bypassing Zookeeper"]
-    ["-h" "--help" 
-     "show help and exit"
-     :flag true]
-    ["-m" "--mode" 
-     "Indicates how infosquito should be run. (passive|sync)"
-     :default "passive"]))
+  (ss/try+
+    (tc/cli args
+      ["-c" "--config" 
+       "sets the local configuration file to be read, bypassing Zookeeper"]
+      ["-h" "--help" 
+       "show help and exit"
+       :flag true]
+      ["-m" "--mode" 
+       "Indicates how infosquito should be run. (passive|sync)"
+       :default "passive"])
+    (catch Exception e
+      (ss/throw+ {:type :cli :msg (.getMessage e)}))))
 
 
 (defn -main
@@ -100,6 +103,8 @@
              (if-let [cfg-file (:config opts)]
                (get-local-props cfg-file)
                (get-remote-props)))))
+    (catch [:type :cli] {:keys [msg]}
+      (tl/error msg))
     (catch [:type :invalid-mode] {:keys [mode]}
       (tl/error "Invalid mode, " mode))
     (catch [:type :cfg-problem] {:keys [cfg-file]}
