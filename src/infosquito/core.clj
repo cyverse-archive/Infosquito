@@ -44,8 +44,7 @@
     (let [worker (w/mk-worker (init-irods props)
                               (mk-beanstalk-ctor props)
                               (mk-es-url props)
-                              (get props "infosquito.beanstalk.task-ttr")
-                              (get props "infosquito.beanstalk.reserve-timeout"))]
+                              (get props "infosquito.beanstalk.task-ttr"))]
       (condp = mode
         :passive (dorun (repeatedly #(w/process-next-task worker)))
         :sync    (w/sync-index worker)))
@@ -87,7 +86,7 @@
      "show help and exit"
      :flag true]
     ["-m" "--mode" 
-     "Indicates how infosquito should be run. (passive|reset|sync)"
+     "Indicates how infosquito should be run. (passive|sync)"
      :default "passive"]))
 
 

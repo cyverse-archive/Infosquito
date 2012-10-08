@@ -109,11 +109,10 @@
 
 
 (defn mk-worker
-  [irods-cfg queue-client-ctor es-cluster task-ttr reserve-timeout]
-  (let [ctx {:irod-cfg        irods-cfg
-             :queue           (queue-client-ctor)
-             :task-ttr        task-ttr
-             :reserve-timeout reserve-timeout}]
+  [irods-cfg queue-client-ctor es-cluster task-ttr]
+  (let [ctx {:irod-cfg irods-cfg
+             :queue    (queue-client-ctor)
+             :task-ttr task-ttr}]
     (cer/connect! es-cluster)
     ctx))
 
@@ -121,7 +120,7 @@
 (defn process-next-task 
   [worker]
   (let [queue (:queue worker)
-        task  (.reserve-with-timeout queue (:reserve-timeout worker))] 
+        task  (.reserve queue)] 
     (when task 
       (dispatch-task worker (dj/read-json (:payload task)))
       (.delete queue (:id task)))))
