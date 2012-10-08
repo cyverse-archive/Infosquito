@@ -103,6 +103,17 @@
 
 
 (defn mk-worker
+  "Constructs the worker
+
+   Parameters:
+     irods-cfg - The irods configuration to use
+     queue-client-ctor - The constructor for the queue client
+     es-url - The URL for the Elastic Search platform
+     task-ttr - The maximum number of seconds a worker may take to perform the 
+       task.
+
+   Returns:
+     A worker object"
   [irods-cfg queue-client-ctor es-url task-ttr]
   (cer/connect! es-url)  
   {:irod-cfg irods-cfg
@@ -110,7 +121,12 @@
    :task-ttr task-ttr})
 
 
-(defn process-next-task 
+(defn process-next-task
+  "Reads the next available task from the queue and performs it.  If there are
+   no tasks in the queue, it will wait for the next available task.
+
+   Parameters:
+     worker - The worker performing the task."
   [worker]
   (let [queue (:queue worker)
         task  (.reserve queue)] 
@@ -120,6 +136,14 @@
 
 
 (defn sync-index
+  "Synchronizes the search index with the iRODS repository.  It removes all
+   entries it finds in the index that are no longer in the repository, then it
+   reindexes all of the current entries in the repository.  This function
+   doesn't actually make changes to the index.  Instead it schedules tasks in
+   the work queue.
+
+   Parameters:
+     worker - The worker performing the task."
   [worker]
   (tl/info "Synchronizing index with iRODS repository")
   (remove-missing-entries worker)
