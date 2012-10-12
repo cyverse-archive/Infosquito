@@ -131,3 +131,21 @@
                     {:type "remove entry" :path "/iplant/home/user1/old-file"})
     (process-next-task worker)
     (is (= @es-repo-ref {"iplant" {"file" {}}}))))
+
+
+(deftest test-sync
+  (let [[queue-ref es-repo-ref worker] (setup)]
+    (reset! es-repo-ref 
+            {"iplant" {"folder" {"/iplant/home/old-user" {:name "old-user" 
+                                                          :user "old-user"}
+                                 "/iplant/home/user1"    {:name "user1"
+                                                          :user "user1"}}}})
+    (sync-index worker)
+    (is (= (set (map #(dj/read-json (:payload %)) 
+                @queue-ref))
+           #{{:type "remove entry"  :path "/iplant/home/old-user"}
+             {:type "index entry"   :path "/iplant/home/user1/"}
+             {:type "index members" :path "/iplant/home/user1/"}
+             {:type "index entry"   :path "/iplant/home/user2/"}
+             {:type "index members" :path "/iplant/home/user2/"}}))))
+  

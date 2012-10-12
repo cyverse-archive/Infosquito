@@ -35,8 +35,8 @@
   [repo index query]
   (if (not= query (ceq/match-all))
     (ss/throw+ {:type :unsupported-query :query query})
-    (if-let [idx-map (get repo index)]
-      (let [hits (apply mapcat (fn [kv] {:_id (key kv)}) (vals idx-map))]
+    (when-let [idx-map (get repo index)]
+      (let [hits (map (fn [kv] {:_id (key kv)}) (apply merge (vals idx-map)))]
         {:hits {:hits hits :total (count hits)}}))))
     
   
