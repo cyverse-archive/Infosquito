@@ -9,6 +9,7 @@
             [clj-jargon.jargon :as cj]
             [clojure-commons.clavin-client :as cc]
             [clojure-commons.props :as cp]
+            [infosquito.es :as e]
             [infosquito.worker :as w])
   (:import [java.net URL]))
 
@@ -18,8 +19,8 @@
   (cj/init (get props "infosquito.irods.host") 
            (get props "infosquito.irods.port")
            (get props "infosquito.irods.user")
-           (get props "infosquito.irods.home")
            (get props "infosquito.irods.password")
+           (get props "infosquito.irods.home")
            (get props "infosquito.irods.zone")
            (get props "infosquito.irods.default-resource")))
 
@@ -40,16 +41,13 @@
 
 (defn- run 
   [mode props]
-  (ss/try+      
-    (let [worker (w/mk-worker (init-irods props)
-                              (mk-beanstalk-ctor props)
-                              (mk-es-url props)
-                              (get props "infosquito.beanstalk.task-ttr"))]
-      (condp = mode
-        :passive (dorun (repeatedly #(w/process-next-task worker)))
-        :sync    (w/sync-index worker)))
-    (catch Exception e
-      (tl/error "Exiting," (.getMessage e)))))
+  (let [worker (w/mk-worker (init-irods props)
+                            (mk-beanstalk-ctor props)
+                            (e/mk-indexer (mk-es-url props))
+                            (get props "infosquito.beanstalk.task-ttr"))]
+    (condp = mode
+      :passive (dorun (repeatedly #(w/process-next-task worker)))
+      :sync    (w/sync-index worker))))
   
 
 (defn- get-local-props

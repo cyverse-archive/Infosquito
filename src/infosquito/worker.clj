@@ -2,11 +2,11 @@
   (:require [clojure.data.json :as dj]
             [clojure.tools.logging :as tl]
             [clojurewerkz.elastisch.query :as ceq]
-            [clojurewerkz.elastisch.rest :as cer]
-            [clojurewerkz.elastisch.rest.document :as cerd]
             [clojurewerkz.elastisch.rest.response :as cerr]
+            [com.github.drsnyder.beanstalk :as cgdb]
             [clj-jargon.jargon :as cj]
-            [clojure-commons.file-utils :as cf]))
+            [clojure-commons.file-utils :as cf]
+            [infosquito.es-if :as e]))
 
 
 (def ^{:private true} index "iplant")
@@ -26,7 +26,7 @@
 
 
 (def ^{:private true} index-entry-task "index entry")
-(def ^{:private true} index-members-task "index member")
+(def ^{:private true} index-members-task "index members")
 (def ^{:private true} remove-entry-task "remove entry")
 
 
@@ -38,7 +38,7 @@
 (defn- post-task
   [worker task]
   (let [msg (dj/json-str task)]
-    (.put (:queue worker) 0 0 (:task-ttr worker) (count msg) msg)))
+    (cgdb/put (:queue worker) 0 0 (:task-ttr worker) (count msg) msg)))
 
 
 ;; Indexer Functions
@@ -59,38 +59,45 @@
 
 (defn- index-entry
   [worker path]
-  (let [user (second (re-matches #"^/iplant/home/(.*)(/.*)?$" path))]
+  (let [user (second (re-matches #"^/iplant/home/([^/]+)(/.*)?$" path))]
     (cj/with-jargon (:irods-cfg worker) [irods]
-      (if (cj/is-readable? irods user path)
-        (cerd/put index 
-                  (get-mapping-type irods path) 
-                  (mk-index-id path) 
-                  (mk-index-doc user path))))))
+      (when (cj/is-readable? irods user path)
+        (e/put (:indexer worker) 
+              index 
+              (get-mapping-type irods path) 
+              (mk-index-id path) 
+              (mk-index-doc user path))))))
 
 
 (defn- index-members
   [worker dir-path]
   (cj/with-jargon (:irods-cfg worker) [irods]
-    (doseq [entry (remove #(cj/is-linked-dir? irods %) 
-                          (cj/list-paths irods dir-path))]
+    (doseq [entry (cj/list-paths irods dir-path)]
       (post-task worker (mk-task index-entry-task entry))
-      (if (cj/is-dir? irods entry) (post-task (mk-task index-members-task entry))))))
+      (when (and (cj/is-dir? irods entry)
+                 (not (cj/is-linked-dir? irods entry)))
+        (post-task worker (mk-task index-members-task entry))))))
   
   
 (defn- remove-entry
   [worker path]
-  (cj/with-jargon (:irods-cfg worker) [irods]
-    (cerd/delete index (get-mapping-type irods path) (mk-index-id path))))
+  (let [indexer (:indexer worker)
+        id      (mk-index-id path)]
+    (e/delete indexer index file-type id)
+    (e/delete indexer index dir-type id)))
 
 
 (defn- remove-missing-entries
   [worker]
   ;; TODO set up paging here.  Lazy sequence?
-  (cj/with-jargon (:irods-cfg worker) [irods]
-    (doseq [path (remove #(cj/exists? irods %)
-                         (cerr/ids-from 
-                           (cerd/search-all-types index :query (ceq/match-all))))]
-      (post-task worker (mk-task remove-entry-task path)))))
+  ;; TODO schedule removal if it exists, but isn't readable
+  (if (e/exists? (:indexer worker) index)
+    (cj/with-jargon (:irods-cfg worker) [irods]
+      (doseq [path (remove #(cj/exists? irods %)
+                           (cerr/ids-from (e/search-all-types (:indexer worker) 
+                                                              index 
+                                                              (ceq/match-all))))]
+        (post-task worker (mk-task remove-entry-task path))))))
 
 
 (defn- dispatch-task
@@ -108,17 +115,17 @@
    Parameters:
      irods-cfg - The irods configuration to use
      queue-client-ctor - The constructor for the queue client
-     es-url - The URL for the Elastic Search platform
+     indexer - The client for the Elastic Search platform
      task-ttr - The maximum number of seconds a worker may take to perform the 
        task.
 
    Returns:
      A worker object"
-  [irods-cfg queue-client-ctor es-url task-ttr]
-  (cer/connect! es-url)  
-  {:irod-cfg irods-cfg
-   :queue    (queue-client-ctor)
-   :task-ttr task-ttr})
+  [irods-cfg queue-client-ctor indexer task-ttr]
+  {:irods-cfg irods-cfg
+   :queue     (queue-client-ctor)
+   :indexer   indexer
+   :task-ttr  task-ttr})
 
 
 (defn process-next-task
