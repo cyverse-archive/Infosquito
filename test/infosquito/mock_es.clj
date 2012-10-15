@@ -32,15 +32,30 @@
   
 
 (defn- search-index
-  [repo index query]
-  (if (not= query (ceq/match-all))
-    (ss/throw+ {:type :unsupported-query :query query})
-    (when-let [idx-map (get repo index)]
-      (let [hits (map (fn [kv] {:_id (key kv)}) (apply merge (vals idx-map)))]
-        {:hits {:hits hits :total (count hits)}}))))
+  [repo index params]
+  (let [search-type (:search_type params)
+        query       (:query params)]
+    (when (not= search-type "scan")
+      (ss/throw+ {:type :unsuported-search-type :search-type search-type}))
+    (when (not= query (ceq/match-all))
+      (ss/throw+ {:type :unsupported-query :query query}))
+    (let [hits   (if-let [idx-map (get repo index)]
+                   (map (fn [kv] {:_id (key kv)}) (apply merge (vals idx-map)))
+                   [])
+          scroll {:total-hits (count hits) :hits hits}]
+      [scroll
+       {:_scroll_id (str scroll)}])))
+
     
-  
-(defrecord MockIndexer [repo-ref]
+(defn- advance-scroll
+  [scroll]
+  (let [scroll' (assoc scroll :hits [])]
+    [scroll'
+     {:hits       {:hits (:hits scroll) :total (:total-hits scroll)}
+      :_scroll_id (str scroll')}]))
+
+
+(defrecord ^{:private true} MockIndexer [repo-ref scroll-ref]
   Indexes
   
   (delete [_ index type id]
@@ -51,6 +66,18 @@
   
   (put [_ index type id doc-map]
     (swap! repo-ref index-doc index type id doc-map))
+
+  (scroll [_ scroll-id keep-alive-time]
+    (let [[scroll' resp] (advance-scroll @scroll-ref)]
+      (reset! scroll-ref scroll')
+      resp))
   
-  (search-all-types [_ index query]
-    (search-index @repo-ref index query)))
+  (search-all-types [_ index params]
+    (let [[scroll' resp] (search-index @repo-ref index params)] 
+      (reset! scroll-ref scroll')
+      resp)))
+
+
+(defn mk-mock-indexer
+  [repo-ref]
+  (->MockIndexer repo-ref (atom {:hits [] :total-hits 0})))

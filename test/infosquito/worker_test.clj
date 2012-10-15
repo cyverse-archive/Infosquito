@@ -70,7 +70,7 @@
                          "dr"
                          :proxy-ctor #(bc/mk-mock-proxy (atom init-irods-repo)))
                 #(mk-mock-beanstalk queue)
-                (->MockIndexer es-repo) 
+                (mk-mock-indexer es-repo) 
                 120)]))
 
 

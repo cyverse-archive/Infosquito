@@ -2,11 +2,13 @@
   (:require [clojure.data.json :as dj]
             [clojure.tools.logging :as tl]
             [clojurewerkz.elastisch.query :as ceq]
+            [clojurewerkz.elastisch.rest :as cer]
             [clojurewerkz.elastisch.rest.response :as cerr]
             [com.github.drsnyder.beanstalk :as cgdb]
             [clj-jargon.jargon :as cj]
             [clojure-commons.file-utils :as cf]
             [infosquito.es-if :as e]))
+
 
 
 (def ^{:private true} index "iplant")
@@ -86,18 +88,23 @@
     (e/delete indexer index file-type id)
     (e/delete indexer index dir-type id)))
 
-
+  
 (defn- remove-missing-entries
   [worker]
-  ;; TODO set up paging here.  Lazy sequence?
-  ;; TODO schedule removal if it exists, but isn't readable
-  (if (e/exists? (:indexer worker) index)
-    (cj/with-jargon (:irods-cfg worker) [irods]
-      (doseq [path (remove #(cj/exists? irods %)
-                           (cerr/ids-from (e/search-all-types (:indexer worker) 
-                                                              index 
-                                                              (ceq/match-all))))]
-        (post-task worker (mk-task remove-entry-task path))))))
+  (let [indexer (:indexer worker)]
+    (when (e/exists? indexer index)
+      (cj/with-jargon (:irods-cfg worker) [irods]
+        (loop [scroll-id (:_scroll_id (e/search-all-types indexer 
+                                   index 
+                                   {:search_type "scan"
+                                    :scroll      "10m"
+                                    :size        50
+                                    :query       (ceq/match-all)}))]
+          (let [resp (e/scroll indexer scroll-id "10m")]
+            (when (pos? (count (cerr/hits-from resp)))
+              (doseq [path (remove #(cj/exists? irods %) (cerr/ids-from resp))]
+                (post-task worker (mk-task remove-entry-task path)))
+              (recur (:_scroll_id resp)))))))))
 
 
 (defn- dispatch-task
