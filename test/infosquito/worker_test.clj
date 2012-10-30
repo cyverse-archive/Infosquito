@@ -88,7 +88,7 @@
       (process-next-task worker)
       (is (empty? @queue-ref))
       (is (= (get-in @es-repo-ref 
-                     ["tempzone" "file" "/tempZone/home/user1/readable-file"])
+                     ["iplant" "file" "/tempZone/home/user1/readable-file"])
              {:name "readable-file" :user "user1"}))))
   (testing "index readable folder"
     (let [[queue-ref es-repo-ref worker] (setup)]
@@ -96,7 +96,7 @@
                                  :path "/tempZone/home/user1/readable-dir"})
       (process-next-task worker)
       (is (= (get-in @es-repo-ref 
-                     ["tempzone" "folder" "/tempZone/home/user1/readable-dir"])
+                     ["iplant" "folder" "/tempZone/home/user1/readable-dir"])
              {:name "readable-dir" :user "user1"}))))
   (testing "index unreadable entry"
     (let [[queue-ref es-repo-ref worker] (setup)]    
@@ -104,7 +104,7 @@
                                  :path "/tempZone/home/user1/unreadable-file"})
       (process-next-task worker)
       (is (nil? (get-in @es-repo-ref 
-                        ["tempzone" "file" "/tempZone/home/user1/unreadable-file"]))))))
+                        ["iplant" "file" "/tempZone/home/user1/unreadable-file"]))))))
 
 
 (deftest test-index-members
@@ -126,22 +126,21 @@
 (deftest test-remove-entry
   (let [[queue-ref es-repo-ref worker] (setup)]
     (reset! es-repo-ref 
-            {"tempzone" 
-             {"file" {"/tempZone/home/user1/old-file" {:name "old-file" 
-                                                       :user "user1"}}}})
+            {"iplant" {"file" {"/tempZone/home/user1/old-file" {:name "old-file" 
+                                                                :user "user1"}}}})
     (populate-queue queue-ref 
                     {:type "remove entry" :path "/tempZone/home/user1/old-file"})
     (process-next-task worker)
-    (is (= @es-repo-ref {"tempzone" {"file" {}}}))))
+    (is (= @es-repo-ref {"iplant" {"file" {}}}))))
 
 
 (deftest test-sync
   (let [[queue-ref es-repo-ref worker] (setup)]
     (reset! es-repo-ref 
-            {"tempzone" {"folder" {"/tempZone/home/old-user" {:name "old-user" 
-                                                              :user "old-user"}
-                                   "/tempZone/home/user1"    {:name "user1"
-                                                              :user "user1"}}}})
+            {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" 
+                                                            :user "old-user"}
+                                 "/tempZone/home/user1"    {:name "user1"
+                                                            :user "user1"}}}})
     (sync-index worker)
     (is (= (set (map #(json/read-json (:payload %)) 
                 @queue-ref))

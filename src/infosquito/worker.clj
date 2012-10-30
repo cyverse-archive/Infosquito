@@ -11,7 +11,7 @@
             [infosquito.work-queue :as queue]))
 
 
-(def ^{:private true} index "tempzone")
+(def ^{:private true} index "iplant")
 (def ^{:private true} file-type "file")
 (def ^{:private true} dir-type "folder")
 
