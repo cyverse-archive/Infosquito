@@ -2,68 +2,83 @@
   "This namespace defines the entry point for Infosquito.  All state should be
    in here."
   (:gen-class)
-  (:require [clojure.tools.cli :as tc] 
-            [clojure.tools.logging :as tl]
-            [com.github.drsnyder.beanstalk :as cgdb]
+  (:require [clojure.tools.cli :as cli] 
+            [clojure.tools.logging :as log]
+            [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
-            [clj-jargon.jargon :as cj]
-            [clojure-commons.clavin-client :as cc]
-            [clojure-commons.props :as cp]
-            [infosquito.es :as e]
-            [infosquito.worker :as w])
+            [clj-jargon.jargon :as irods]
+            [clojure-commons.clavin-client :as zk]
+            [clojure-commons.props :as props]
+            [infosquito.es :as es]
+            [infosquito.work-queue :as queue]
+            [infosquito.worker :as worker])
   (:import [java.net URL]))
 
 
+(defn- get-int-prop
+  [props name]
+  (Integer/parseInt (get props name)))
+
+  
 (defn- init-irods
   [props]
-  (cj/init (get props "infosquito.irods.host") 
-           (get props "infosquito.irods.port")
-           (get props "infosquito.irods.user")
-           (get props "infosquito.irods.password")
-           (get props "infosquito.irods.home")
-           (get props "infosquito.irods.zone")
-           (get props "infosquito.irods.default-resource")))
+  (irods/init (get props "infosquito.irods.host") 
+              (get props "infosquito.irods.port")
+              (get props "infosquito.irods.user")
+              (get props "infosquito.irods.password")
+              (get props "infosquito.irods.home")
+              (get props "infosquito.irods.zone")
+              (get props "infosquito.irods.default-resource")))
 
 
-(defn- mk-beanstalk-ctor
+(defn- mk-queue
   [props]
-  #(cgdb/new-beanstalk (get props "infosquito.beanstalk.host")
-                       (Integer/parseInt (get props "infosquito.beanstalk.port"))))
+  (let [port (get-int-prop props "infosquito.beanstalk.port")
+        ctor #(beanstalk/new-beanstalk (get props "infosquito.beanstalk.host")
+                                       port)]
+    (queue/mk-client ctor
+                     (get-int-prop props "infosquito.connect-retries")
+                     (get-int-prop props "infosquito.beanstalk.task-ttr"))))
 
 
 (defn- mk-es-url
   [props]
   (str (URL. "http" 
              (get props "infosquito.es.host") 
-             (Integer/parseInt (get props "infosquito.es.port"))
+             (get-int-prop props "infosquito.es.port")
              "")))
-
-
+  
+  
 (defn- run 
+  "Throws:
+     :connection - This is thrown if it loses its connection to beanstalkd.
+     :internal-error - This is thrown if there is an error in the logic error 
+       internal to the worker.
+     :unknown-error - This is thrown if an unidentifiable error occurs.
+     :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
   [mode props]
-  (let [worker (w/mk-worker (init-irods props)
-                            (mk-beanstalk-ctor props)
-                            (e/mk-indexer (mk-es-url props))
-                            (get props "infosquito.beanstalk.task-ttr"))]
+  (let [worker (worker/mk-worker (init-irods props)
+                                 (mk-queue props)
+                                 (es/mk-indexer (mk-es-url props)))]
     (condp = mode
-      :passive (dorun (repeatedly #(w/process-next-task worker)))
-      :sync    (w/sync-index worker))))
+      :passive (dorun (repeatedly #(worker/process-next-task worker)))
+      :sync    (worker/sync-index worker))))
   
 
 (defn- get-local-props
   [cfg-file]
   (ss/try+
-    (cp/read-properties cfg-file)
+    (props/read-properties cfg-file)
     (catch Object _
       (ss/throw+ {:type :cfg-problem :cfg-file cfg-file}))))
 
 
 (defn- get-remote-props 
   []
-  (let [zkprops (cp/parse-properties "zkhosts.properties")]
-    (cc/with-zk (get zkprops "zookeeper")
-      (if (cc/can-run?)
-        (cc/properties "infosquito")
+  (let [zkprops (props/parse-properties "zkhosts.properties")]
+    (zk/with-zk (get zkprops "zookeeper")
+      (if (zk/can-run?)
+        (zk/properties "infosquito")
         (ss/throw+ {:type :zk-perm})))))
 
   
@@ -78,7 +93,7 @@
 (defn- parse-args
   [args]
   (ss/try+
-    (tc/cli args
+    (cli/cli args
       ["-c" "--config" 
        "sets the local configuration file to be read, bypassing Zookeeper"]
       ["-h" "--help" 
@@ -102,13 +117,20 @@
                (get-local-props cfg-file)
                (get-remote-props)))))
     (catch [:type :cli] {:keys [msg]}
-      (tl/error msg))
+      (log/error (str "There was a problem reading the command line input. (" 
+                      msg ") Exiting.")))
     (catch [:type :invalid-mode] {:keys [mode]}
-      (tl/error "Invalid mode, " mode))
+      (log/error "Invalid mode, " mode))
     (catch [:type :cfg-problem] {:keys [cfg-file]}
-      (tl/error "There was problem reading the configuration file" cfg-file "."))
+      (log/error str("There was problem reading the configuration file " 
+                      cfg-file ". Exiting.")))
     (catch [:type :zk-perm] {:keys []}
-      (tl/error 
-        "This application cannot run on this machine.  So sayeth Zookeeper."))
+      (log/error "This application cannot run on this machine. Exiting."))
+    (catch [:type :connection] {:keys [msg]}
+      (log/error (str "An error occurred while communicating with the work queue. "
+                      "(" msg ") Exiting.")))
+    (catch [:type :beanstalkd-oom] {:keys []}
+      (log/error "An error occurred. beanstalkd is out of memory and is"
+                 "probably wedged. Exiting.")) 
     (catch Object _
-      (tl/error (:throwable &throw-context) "unexpected error"))))
+      (log/error (:throwable &throw-context) "unexpected error"))))

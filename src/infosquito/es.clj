@@ -22,7 +22,6 @@
   (cer/url-with-path "_search" "scroll"))
 
 
-
 (defrecord ^{:private true} Indexer []
   Indexes
   
