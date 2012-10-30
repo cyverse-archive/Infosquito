@@ -50,10 +50,16 @@
 ;; Work Logic
 
 
+(defn- user-from-path
+  [worker path]
+  (let [pattern (re-pattern (str "^" (:index-root worker) "/([^/]+)(/.*)?$"))] 
+    (second (re-matches pattern path))))
+            
+  
 (defn- index-entry
   [worker path]
   (log/trace "indexing" path)
-  (let [user (second (re-matches #"^/tempZone/home/([^/]+)(/.*)?$" path))]
+  (let [user (user-from-path worker path)]
     (irods/with-jargon (:irods-cfg worker) [irods]
       (when (irods/is-readable? irods user path)
         (es/put (:indexer worker) 
@@ -155,13 +161,16 @@
      irods-cfg - The irods configuration to use
      queue-client - The queue client
      indexer - The client for the Elastic Search platform
+     index-root - This is the absolute path into irods indicating the directory
+       whose contents are to be indexed.
 
    Returns:
      A worker object"
-  [irods-cfg queue-client indexer]
-  {:irods-cfg irods-cfg
-   :queue     queue-client
-   :indexer   indexer})
+  [irods-cfg queue-client indexer index-root]
+  {:irods-cfg  irods-cfg
+   :queue      queue-client
+   :indexer    indexer
+   :index-root (file/rm-last-slash index-root)})
 
 
 (defn process-next-task
@@ -204,4 +213,4 @@
   (log/info "Synchronizing index with iRODS repository")
   (queue/with-server (:queue worker)
     (remove-missing-entries worker)
-    (index-members worker "/tempZone/home")))
+    (index-members worker (:index-root worker))))

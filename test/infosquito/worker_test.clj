@@ -72,7 +72,8 @@
                             "dr"
                             :proxy-ctor proxy-ctor)
                 (queue/mk-client #(mk-mock-beanstalk queue) 3 120)
-                (mk-mock-indexer es-repo))]))
+                (mk-mock-indexer es-repo)
+                "/tempZone/home")]))
 
 
 (defn- populate-queue

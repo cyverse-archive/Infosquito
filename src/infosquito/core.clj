@@ -59,7 +59,8 @@
   [mode props]
   (let [worker (worker/mk-worker (init-irods props)
                                  (mk-queue props)
-                                 (es/mk-indexer (mk-es-url props)))]
+                                 (es/mk-indexer (mk-es-url props))
+                                 (get props "infosquito.irods.index-root"))]
     (condp = mode
       :passive (dorun (repeatedly #(worker/process-next-task worker)))
       :sync    (worker/sync-index worker))))
