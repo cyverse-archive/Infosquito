@@ -4,10 +4,10 @@
   :license {:url "file://LICENSE.txt"}
   :main infosquito.core
   :dependencies [[org.clojure/clojure "1.4.0"]
-                 [org.clojure/data.json "0.1.2"]
+                 [org.clojure/data.json "0.2.0"]
                  [org.clojure/tools.cli "0.2.1"]
                  [org.clojure/tools.logging "0.2.3"]
-                 [clojurewerkz/elastisch "1.0.0"]
+                 [clojurewerkz/elastisch "1.0.2"]
                  [com.github.drsnyder/beanstalk "1.0.0-clj14"]
                  [slingshot "0.10.3"]
                  [org.iplantc/clj-jargon "0.2.2-SNAPSHOT"]
