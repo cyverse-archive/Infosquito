@@ -12,14 +12,16 @@
 
 (defn- cer_post-text
   [^String uri &{:keys [body] :as options}]
-  (io! (json/decode (:body (http/post uri 
-                                      (merge options {:accept :json}))) 
+  (io! (json/decode (:body (http/post uri (merge options {:accept :json}))) 
                     true)))
         
 
 (defn- cer_scroll-url
   []
   (cer/url-with-path "_search" "scroll"))
+
+
+;;
 
 
 (defrecord ^{:private true} Indexer []

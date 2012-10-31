@@ -50,22 +50,23 @@
 (defn- advance-scroll
   [scroll]
   (let [scroll' (assoc scroll :hits [])]
-    [scroll'
-     {:hits       {:hits (:hits scroll) :total (:total-hits scroll)}
-      :_scroll_id (str scroll')}]))
+    [scroll' {:hits       {:hits (:hits scroll) :total (:total-hits scroll)}
+              :_scroll_id (str scroll')}]))
 
 
 (defrecord ^{:private true} MockIndexer [repo-ref scroll-ref]
   Indexes
   
   (delete [_ index type id]
-    (swap! repo-ref remove-doc index type id))
+    (swap! repo-ref remove-doc index type id)
+    {:ok true})
 
   (exists? [_ index]
     (index-exists? @repo-ref index))
   
   (put [_ index type id doc-map]
-    (swap! repo-ref index-doc index type id doc-map))
+    (swap! repo-ref index-doc index type id doc-map)
+    {:ok true})
 
   (scroll [_ scroll-id keep-alive-time]
     (let [[scroll' resp] (advance-scroll @scroll-ref)]

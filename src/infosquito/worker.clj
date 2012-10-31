@@ -21,6 +21,13 @@
 (def ^{:private true} remove-entry-task "remove entry")
 
 
+(defn- log-when-es-failed
+  [op-name response]
+  (if-not (cerr/ok? response)
+    (log/error op-name "failed" response))
+  response) 
+  
+  
 (defn- mk-task
   [type path]
   {:type type :path path}) 
@@ -62,11 +69,12 @@
   (let [user (user-from-path worker path)]
     (irods/with-jargon (:irods-cfg worker) [irods]
       (when (irods/is-readable? irods user path)
-        (es/put (:indexer worker) 
-                index 
-                (get-mapping-type irods path) 
-                (mk-index-id path) 
-                (mk-index-doc user path))))))
+        (log-when-es-failed "index entry"
+                            (es/put (:indexer worker) 
+                                    index 
+                                    (get-mapping-type irods path) 
+                                    (mk-index-id path) 
+                                    (mk-index-doc user path)))))))
 
 
 (defn- index-members
@@ -98,19 +106,21 @@
   (log/trace "removing" path)
   (let [indexer (:indexer worker)
         id      (mk-index-id path)]
-    (es/delete indexer index file-type id)
-    (es/delete indexer index dir-type id)))
+    (log-when-es-failed "remove entry" (es/delete indexer index file-type id))
+    (log-when-es-failed "remove entry" (es/delete indexer index dir-type id))))
 
-  
 
 (defn- init-index-scrolling
   [worker]
-  (:_scroll_id (es/search-all-types (:indexer worker) 
+  (let [resp (es/search-all-types (:indexer worker) 
                                     index 
                                     {:search_type "scan"
                                      :scroll      "10m" 
                                      :size        50    
-                                     :query       (ceq/match-all)})))
+                                     :query       (ceq/match-all)})]
+    (if-let [scroll-id (:_scroll_id resp)]
+      scroll-id
+      (ss/throw+ {:type :index-scroll :resp resp}))))
  
 
 (defn- remove-missing-entries
@@ -125,13 +135,17 @@
       (when (es/exists? indexer index)
         (irods/with-jargon (:irods-cfg worker) [irods]
           (loop [scroll-id (init-index-scrolling worker)]
-            (let [resp (es/scroll indexer scroll-id "10m")]  
+            (let [resp (es/scroll indexer scroll-id "10m")]
+              (if-not (:_scroll_id resp) 
+                (ss/throw+ {:type :index-scroll :resp resp}))
               (when (pos? (count (cerr/hits-from resp)))
                 (doseq [path (remove #(irods/exists? irods %) 
                                      (cerr/ids-from resp))]
                   (queue/put (:queue worker) 
                              (json/json-str (mk-task remove-entry-task path))))
                 (recur (:_scroll_id resp))))))))
+    (catch [:type :index-scroll] {:keys [resp]}
+      (log/error "Stopping removal of missing entries." resp))
     (catch [:type :beanstalkd-oom] {:keys []}
       (log/warn "Stopping removal of missing entries."
                 "beanstalkd is out of memory."))
