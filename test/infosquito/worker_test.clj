@@ -58,10 +58,10 @@
 
 (defn- setup
   []
-  (let [queue      (atom [])
-        es-repo    (atom {})
-        proxy-ctor #(boxy/mk-mock-proxy (atom init-irods-repo))]
-    [queue 
+  (let [queue-state (atom default-state)
+        es-repo     (atom {})
+        proxy-ctor  #(boxy/mk-mock-proxy (atom init-irods-repo))]
+    [queue-state 
      es-repo 
      (mk-worker (irods/init "localhost" 
                             "1297" 
@@ -71,50 +71,59 @@
                             "tempZone" 
                             "dr"
                             :proxy-ctor proxy-ctor)
-                (queue/mk-client #(mk-mock-beanstalk queue) 3 120)
+                (queue/mk-client #(mk-mock-beanstalk queue-state) 
+                                 3 
+                                 120 
+                                 "infosquito")
                 (mk-mock-indexer es-repo)
-                "/tempZone/home")]))
+                "/tempZone/home"
+                "10m"
+                50)]))
 
 
 (defn- populate-queue
-  [queue-ref task]
-  (reset! queue-ref [{:id 0 :payload (json/json-str task)}]))
+  [queue-state-ref task]
+  (swap! queue-state-ref 
+         #(assoc % :tubes {"infosquito" [{:id 0 :payload (json/json-str task)}]})))
   
 
 (deftest test-index-entry
   (testing "index readable file"
-    (let [[queue-ref es-repo-ref worker] (setup)]
-      (populate-queue queue-ref {:type "index entry" 
-                                 :path "/tempZone/home/user1/readable-file"})
+    (let [[queue-state-ref es-repo-ref worker] (setup)]
+      (populate-queue queue-state-ref 
+                      {:type "index entry" 
+                       :path "/tempZone/home/user1/readable-file"})
       (process-next-task worker)
-      (is (empty? @queue-ref))
+      (is (empty? (:queue @queue-state-ref)))
       (is (= (get-in @es-repo-ref 
                      ["iplant" "file" "/tempZone/home/user1/readable-file"])
              {:name "readable-file" :user "user1"}))))
   (testing "index readable folder"
-    (let [[queue-ref es-repo-ref worker] (setup)]
-      (populate-queue queue-ref {:type "index entry" 
-                                 :path "/tempZone/home/user1/readable-dir"})
+    (let [[queue-state-ref es-repo-ref worker] (setup)]
+      (populate-queue queue-state-ref {:type "index entry" 
+                                       :path "/tempZone/home/user1/readable-dir"})
       (process-next-task worker)
       (is (= (get-in @es-repo-ref 
                      ["iplant" "folder" "/tempZone/home/user1/readable-dir"])
              {:name "readable-dir" :user "user1"}))))
   (testing "index unreadable entry"
-    (let [[queue-ref es-repo-ref worker] (setup)]    
-      (populate-queue queue-ref {:type "index entry" 
-                                 :path "/tempZone/home/user1/unreadable-file"})
+    (let [[queue-state-ref es-repo-ref worker] (setup)]    
+      (populate-queue queue-state-ref 
+                      {:type "index entry" 
+                       :path "/tempZone/home/user1/unreadable-file"})
       (process-next-task worker)
       (is (nil? (get-in @es-repo-ref 
                         ["iplant" "file" "/tempZone/home/user1/unreadable-file"]))))))
 
 
 (deftest test-index-members
-  (let [[queue-ref es-repo-ref worker] (setup)]
-    (populate-queue queue-ref {:type "index members" :path "/tempZone/home/user1"})
+  (let [[queue-state-ref es-repo-ref worker] (setup)]
+    (populate-queue queue-state-ref {:type "index members" 
+                                     :path "/tempZone/home/user1"})
     (process-next-task worker)
     (is (empty? @es-repo-ref))
     (is (= (set (map #(json/read-json (:payload %)) 
-                     @queue-ref)) 
+                     (get (:tubes @queue-state-ref) "infosquito"))) 
            #{{:type "index entry"   :path "/tempZone/home/user1/readable-file"}
              {:type "index entry"   :path "/tempZone/home/user1/unreadable-file"}
              {:type "index entry"   :path "/tempZone/home/user1/readable-dir/"}
@@ -125,18 +134,18 @@
 
 
 (deftest test-remove-entry
-  (let [[queue-ref es-repo-ref worker] (setup)]
+  (let [[queue-state-ref es-repo-ref worker] (setup)]
     (reset! es-repo-ref 
             {"iplant" {"file" {"/tempZone/home/user1/old-file" {:name "old-file" 
                                                                 :user "user1"}}}})
-    (populate-queue queue-ref 
+    (populate-queue queue-state-ref 
                     {:type "remove entry" :path "/tempZone/home/user1/old-file"})
     (process-next-task worker)
     (is (= @es-repo-ref {"iplant" {"file" {}}}))))
 
 
 (deftest test-sync
-  (let [[queue-ref es-repo-ref worker] (setup)]
+  (let [[queue-state-ref es-repo-ref worker] (setup)]
     (reset! es-repo-ref 
             {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" 
                                                             :user "old-user"}
@@ -144,7 +153,7 @@
                                                             :user "user1"}}}})
     (sync-index worker)
     (is (= (set (map #(json/read-json (:payload %)) 
-                @queue-ref))
+                (get (:tubes @queue-state-ref) "infosquito")))
            #{{:type "remove entry"  :path "/tempZone/home/old-user"}
              {:type "index entry"   :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}

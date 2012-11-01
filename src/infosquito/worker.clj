@@ -11,6 +11,9 @@
             [infosquito.work-queue :as queue]))
 
 
+;; TODO set up tube
+
+
 (def ^{:private true} index "iplant")
 (def ^{:private true} file-type "file")
 (def ^{:private true} dir-type "folder")
@@ -115,8 +118,8 @@
   (let [resp (es/search-all-types (:indexer worker) 
                                     index 
                                     {:search_type "scan"
-                                     :scroll      "10m" 
-                                     :size        50    
+                                     :scroll      (:scroll-ttl worker)
+                                     :size        (:scroll-page-size worker)
                                      :query       (ceq/match-all)})]
     (if-let [scroll-id (:_scroll_id resp)]
       scroll-id
@@ -135,7 +138,7 @@
       (when (es/exists? indexer index)
         (irods/with-jargon (:irods-cfg worker) [irods]
           (loop [scroll-id (init-index-scrolling worker)]
-            (let [resp (es/scroll indexer scroll-id "10m")]
+            (let [resp (es/scroll indexer scroll-id (:scroll-ttl worker))]
               (if-not (:_scroll_id resp) 
                 (ss/throw+ {:type :index-scroll :resp resp}))
               (when (pos? (count (cerr/hits-from resp)))
@@ -177,14 +180,19 @@
      indexer - The client for the Elastic Search platform
      index-root - This is the absolute path into irods indicating the directory
        whose contents are to be indexed.
-
+     scroll-ttl - The amount of time Elastic Search will persist a scan result
+     scroll-page-size - The number of scan result entries to return for a single 
+       scroll call.
+       
    Returns:
      A worker object"
-  [irods-cfg queue-client indexer index-root]
-  {:irods-cfg  irods-cfg
-   :queue      queue-client
-   :indexer    indexer
-   :index-root (file/rm-last-slash index-root)})
+  [irods-cfg queue-client indexer index-root scroll-ttl scroll-page-size]
+  {:irods-cfg        irods-cfg
+   :queue            queue-client
+   :indexer          indexer
+   :index-root       (file/rm-last-slash index-root)
+   :scroll-ttl       scroll-ttl
+   :scroll-page-size scroll-page-size})
 
 
 (defn process-next-task

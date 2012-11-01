@@ -68,7 +68,11 @@
   (let [queue-ref (:beanstalk client)]
     (loop [attempt-num 1]
       (ss/try+
-        (reset! queue-ref ((:ctor client)))
+        (let [tube (:tube client)]
+          (reset! queue-ref ((:ctor client)))
+          (perform-op-once client #(beanstalk/watch % tube))
+          (perform-op-once client #(beanstalk/ignore % "default"))
+          (perform-op-once client #(beanstalk/use % tube)))
         (catch Exception e
           (close! client)))
       (when-not @queue-ref
@@ -97,13 +101,15 @@
        connect to beanstalkd before giving up.
      tast-ttr - This is the number of seconds the client will have to perform a
        task while reserved.
+     tube - The name of the tube to use.
 
    Returns:
      It returns a beanstalk client"
-  [beanstalk-ctor connect-tries task-ttr]
+  [beanstalk-ctor connect-tries task-ttr tube]
   {:ctor       beanstalk-ctor
    :conn-tries connect-tries
    :task-ttr   task-ttr
+   :tube       tube
    :beanstalk  (atom nil)})
   
 

@@ -37,8 +37,9 @@
         ctor #(beanstalk/new-beanstalk (get props "infosquito.beanstalk.host")
                                        port)]
     (queue/mk-client ctor
-                     (get-int-prop props "infosquito.connect-retries")
-                     (get-int-prop props "infosquito.beanstalk.task-ttr"))))
+                     (get-int-prop props "infosquito.beanstalk.connect-retries")
+                     (get-int-prop props "infosquito.beanstalk.task-ttr")
+                     (get props "infosquito.beanstalk.tube"))))
 
 
 (defn- mk-es-url
@@ -60,7 +61,10 @@
   (let [worker (worker/mk-worker (init-irods props)
                                  (mk-queue props)
                                  (es/mk-indexer (mk-es-url props))
-                                 (get props "infosquito.irods.index-root"))]
+                                 (get props "infosquito.irods.index-root")
+                                 (get props "infosquito.es.scroll-ttl")
+                                 (get-int-prop props 
+                                               "infosquito.es.scroll-page-size"))]
     (condp = mode
       :passive (dorun (repeatedly #(worker/process-next-task worker)))
       :sync    (worker/sync-index worker))))
