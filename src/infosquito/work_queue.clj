@@ -148,7 +148,7 @@
        to the work queue.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [client task-id]
-  (assert (not= nil (:beanstalk client)))
+  (assert (not= nil @(:beanstalk client)))
   (perform-op client #(beanstalk/delete % task-id))
   nil)
             
@@ -172,7 +172,7 @@
      :beanstalkd-draining - This is thrown if beanstalkd is draining and not 
        accepting new tasks."
   [client task-str]
-  (assert (not= nil (:beanstalk client)))
+  (assert (not= nil @(:beanstalk client)))
   (letfn [(put' [beanstalk] (beanstalk/put beanstalk 
                                            0 
                                            0 
@@ -208,6 +208,6 @@
      :unknown-error - This is thrown if an unidentifiable error occurs.
      :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
   [client]
-  (assert (not= nil (:beanstalk client)))
+  (assert (not= nil @(:beanstalk client)))
   (perform-op client beanstalk/reserve 
     :oom-handler #(ss/throw+ {:type :beanstalkd-oom})))

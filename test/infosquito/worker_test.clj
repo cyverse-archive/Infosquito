@@ -151,6 +151,24 @@
                                                             :user "old-user"}
                                  "/tempZone/home/user1"    {:name "user1"
                                                             :user "user1"}}}})
+    (populate-queue queue-state-ref {:type "sync"})
+    (process-next-task worker)
+    (is (= (set (map #(json/read-json (:payload %)) 
+                (get (:tubes @queue-state-ref) "infosquito")))
+           #{{:type "remove entry"  :path "/tempZone/home/old-user"}
+             {:type "index entry"   :path "/tempZone/home/user1/"}
+             {:type "index members" :path "/tempZone/home/user1/"}
+             {:type "index entry"   :path "/tempZone/home/user2/"}
+             {:type "index members" :path "/tempZone/home/user2/"}}))))
+
+
+(deftest test-sync-index
+  (let [[queue-state-ref es-repo-ref worker] (setup)]
+    (reset! es-repo-ref 
+            {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" 
+                                                            :user "old-user"}
+                                 "/tempZone/home/user1"    {:name "user1"
+                                                            :user "user1"}}}})
     (sync-index worker)
     (is (= (set (map #(json/read-json (:payload %)) 
                 (get (:tubes @queue-state-ref) "infosquito")))

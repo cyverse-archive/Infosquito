@@ -11,9 +11,6 @@
             [infosquito.work-queue :as queue]))
 
 
-;; TODO set up tube
-
-
 (def ^{:private true} index "iplant")
 (def ^{:private true} file-type "file")
 (def ^{:private true} dir-type "folder")
@@ -22,6 +19,7 @@
 (def ^{:private true} index-entry-task "index entry")
 (def ^{:private true} index-members-task "index members")
 (def ^{:private true} remove-entry-task "remove entry")
+(def ^{:private true} sync-task "sync")
 
 
 (defn- log-when-es-failed
@@ -157,6 +155,18 @@
                 "beanstalkd is not accepting new tasks."))))
 
 
+(defn- sync-with-repo
+  "Throws:
+     :connection - This is thrown if it loses its connection to beanstalkd.
+     :internal-error - This is thrown if there is an error in the logic error 
+       internal to the worker.
+     :unknown-error - This is thrown if an unidentifiable error occurs."
+  [worker]
+  (log/info "Synchronizing index with iRODS repository")
+  (remove-missing-entries worker)
+  (index-members worker (:index-root worker)))
+
+
 (defn- dispatch-task
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
@@ -164,11 +174,11 @@
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker task]
-  (let [path (:path task)]
-    (condp = (:type task)
-      index-entry-task   (index-entry worker path)
-      index-members-task (index-members worker path)
-      remove-entry-task  (remove-entry worker path))))
+  (condp = (:type task)
+    index-entry-task   (index-entry worker (:path task))
+    index-members-task (index-members worker (:path task))
+    remove-entry-task  (remove-entry worker (:path task))
+    sync-task          (sync-with-repo worker)))
 
 
 (defn mk-worker
@@ -232,7 +242,4 @@
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker]
-  (log/info "Synchronizing index with iRODS repository")
-  (queue/with-server (:queue worker)
-    (remove-missing-entries worker)
-    (index-members worker (:index-root worker))))
+  (queue/with-server (:queue worker) (sync-with-repo worker)))
