@@ -42,12 +42,23 @@
   (if (irods/is-file? irods entry-path) file-type dir-type))
 
 
+(defn- get-viewers
+  [irods entry-path]
+  (letfn [(view? [perms] (or (:read perms)
+                             (:write perms)
+                             (:own perms)))]
+    (->> entry-path 
+      (irods/list-user-perms irods) 
+      (filter #(view? (:permissions %)))
+      (map :user))))
+
+  
 ;; Indexer Functions
 
 
 (defn- mk-index-doc
-  [user path]
-  {:user user :name (file/basename path)})
+  [path viewers]
+  {:name (file/basename path) :viewers viewers})
 
 
 (defn- mk-index-id
@@ -58,24 +69,17 @@
 ;; Work Logic
 
 
-(defn- user-from-path
-  [worker path]
-  (let [pattern (re-pattern (str "^" (:index-root worker) "/([^/]+)(/.*)?$"))] 
-    (second (re-matches pattern path))))
-            
-  
 (defn- index-entry
   [worker path]
   (log/trace "indexing" path)
-  (let [user (user-from-path worker path)]
-    (irods/with-jargon (:irods-cfg worker) [irods]
-      (when (irods/is-readable? irods user path)
-        (log-when-es-failed "index entry"
-                            (es/put (:indexer worker) 
-                                    index 
-                                    (get-mapping-type irods path) 
-                                    (mk-index-id path) 
-                                    (mk-index-doc user path)))))))
+  (irods/with-jargon (:irods-cfg worker) [irods]
+    (let [viewers (get-viewers irods path)]
+      (log-when-es-failed "index entry"
+                          (es/put (:indexer worker) 
+                                  index 
+                                  (get-mapping-type irods path) 
+                                  (mk-index-id path) 
+                                  (mk-index-doc path viewers))))))
 
 
 (defn- index-members

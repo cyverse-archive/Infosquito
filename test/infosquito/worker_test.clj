@@ -17,7 +17,8 @@
                                                         :acl  {}
                                                         :avus {}}
    "/tempZone/home"                                    {:type :normal-dir
-                                                        :acl  {}
+                                                        :acl  {"user1" :read 
+                                                               "user2" :read}
                                                         :avus {}}        
    "/tempZone/home/user1"                              {:type    :normal-dir
                                                         :acl     {"user1" :read}
@@ -97,7 +98,7 @@
       (is (empty? (:queue @queue-state-ref)))
       (is (= (get-in @es-repo-ref 
                      ["iplant" "file" "/tempZone/home/user1/readable-file"])
-             {:name "readable-file" :user "user1"}))))
+             {:name "readable-file" :viewers ["user1"]}))))
   (testing "index readable folder"
     (let [[queue-state-ref es-repo-ref worker] (setup)]
       (populate-queue queue-state-ref {:type "index entry" 
@@ -105,15 +106,25 @@
       (process-next-task worker)
       (is (= (get-in @es-repo-ref 
                      ["iplant" "folder" "/tempZone/home/user1/readable-dir"])
-             {:name "readable-dir" :user "user1"}))))
+             {:name "readable-dir" :viewers ["user1"]}))))
   (testing "index unreadable entry"
     (let [[queue-state-ref es-repo-ref worker] (setup)]    
       (populate-queue queue-state-ref 
                       {:type "index entry" 
                        :path "/tempZone/home/user1/unreadable-file"})
       (process-next-task worker)
-      (is (nil? (get-in @es-repo-ref 
-                        ["iplant" "file" "/tempZone/home/user1/unreadable-file"]))))))
+      (is (= (get-in @es-repo-ref 
+                     ["iplant" "file" "/tempZone/home/user1/unreadable-file"])
+             {:name "unreadable-file" :viewers []})))))
+  (testing "index multiple viewers"
+    (let [[queue-state-ref es-repo-ref worker] (setup)]    
+      (populate-queue queue-state-ref {:type "index entry" :path "/tempZone/home"})
+      (process-next-task worker)
+      (is (= (->> ["iplant" "folder" "/tempZone/home"] 
+               (get-in @es-repo-ref) 
+               :viewers 
+               set)
+             #{"user1" "user2"}))))
 
 
 (deftest test-index-members
