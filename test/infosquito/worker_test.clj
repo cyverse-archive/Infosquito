@@ -1,14 +1,14 @@
 (ns infosquito.worker-test
   (:use clojure.test
+        clojure-commons.infosquito.mock-beanstalk
         infosquito.worker
-        infosquito.mock-beanstalk
         infosquito.mock-es)
   (:require [clojure.data.json :as json]
             [slingshot.slingshot :as ss]
             [boxy.core :as boxy]
             [clj-jargon.jargon :as irods]
             [infosquito.es-if :as es]
-            [infosquito.work-queue :as queue]))
+            [clojure-commons.infosquito.work-queue :as queue]))
 
 
 (def ^{:private true} init-irods-repo

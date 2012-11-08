@@ -7,8 +7,8 @@
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
             [clojure-commons.file-utils :as file]
-            [infosquito.es-if :as es]
-            [infosquito.work-queue :as queue])
+            [clojure-commons.infosquito.work-queue :as queue]
+            [infosquito.es-if :as es])
   (:import [org.irods.jargon.core.exception FileNotFoundException]))
 
 

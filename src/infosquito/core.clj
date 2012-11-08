@@ -8,9 +8,9 @@
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
             [clojure-commons.clavin-client :as zk]
+            [clojure-commons.infosquito.work-queue :as queue]
             [clojure-commons.props :as props]
             [infosquito.es :as es]
-            [infosquito.work-queue :as queue]
             [infosquito.worker :as worker])
   (:import [java.net URL]))
 
