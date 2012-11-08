@@ -8,7 +8,8 @@
             [clj-jargon.jargon :as irods]
             [clojure-commons.file-utils :as file]
             [infosquito.es-if :as es]
-            [infosquito.work-queue :as queue]))
+            [infosquito.work-queue :as queue])
+  (:import [org.irods.jargon.core.exception FileNotFoundException]))
 
 
 (def ^{:private true} index "iplant")
@@ -38,19 +39,31 @@
 
 
 (defn- get-mapping-type
+  "throws:
+     :missing-irods-entry - This is thrown entry-path doesn't point to a valid
+       entry in iRODS"
   [irods entry-path]
-  (if (irods/is-file? irods entry-path) file-type dir-type))
+  (ss/try+
+    (if (irods/is-file? irods entry-path) file-type dir-type)
+    (catch FileNotFoundException _
+      (ss/throw+ {:type :missing-irods-entry :entry entry-path}))))
 
 
 (defn- get-viewers
+  "throws:
+     :missing-irods-entry - This is thrown entry-path doesn't point to a valid
+       entry in iRODS"
   [irods entry-path]
   (letfn [(view? [perms] (or (:read perms)
                              (:write perms)
                              (:own perms)))]
-    (->> entry-path 
-      (irods/list-user-perms irods) 
-      (filter #(view? (:permissions %)))
-      (map :user))))
+    (ss/try+
+      (->> entry-path 
+        (irods/list-user-perms irods) 
+        (filter #(view? (:permissions %)))
+        (map :user))
+      (catch FileNotFoundException _
+        (ss/throw+ {:type :missing-irods-entry :entry entry-path})))))
 
   
 ;; Indexer Functions
@@ -72,14 +85,17 @@
 (defn- index-entry
   [worker path]
   (log/trace "indexing" path)
-  (irods/with-jargon (:irods-cfg worker) [irods]
-    (let [viewers (get-viewers irods path)]
-      (log-when-es-failed "index entry"
-                          (es/put (:indexer worker) 
-                                  index 
-                                  (get-mapping-type irods path) 
-                                  (mk-index-id path) 
-                                  (mk-index-doc path viewers))))))
+  (ss/try+
+    (irods/with-jargon (:irods-cfg worker) [irods]
+      (let [viewers (get-viewers irods path)]
+        (log-when-es-failed "index entry"
+                            (es/put (:indexer worker) 
+                                    index 
+                                    (get-mapping-type irods path) 
+                                    (mk-index-id path) 
+                                    (mk-index-doc path viewers)))))
+    (catch [:type :missing-irods-entry] {:keys [entry]}
+      (log/debug "Not indexing missing iRODS entry" entry))))
 
 
 (defn- index-members
@@ -178,11 +194,13 @@
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker task]
-  (condp = (:type task)
-    index-entry-task   (index-entry worker (:path task))
-    index-members-task (index-members worker (:path task))
-    remove-entry-task  (remove-entry worker (:path task))
-    sync-task          (sync-with-repo worker)))
+  (let [type (:type task)]
+    (condp = type
+      index-entry-task   (index-entry worker (:path task))
+      index-members-task (index-members worker (:path task))
+      remove-entry-task  (remove-entry worker (:path task))
+      sync-task          (sync-with-repo worker)
+                         (log/warn "ignoring unknown task" type))))
 
 
 (defn mk-worker

@@ -4,6 +4,7 @@
         infosquito.mock-beanstalk
         infosquito.mock-es)
   (:require [clojure.data.json :as json]
+            [slingshot.slingshot :as ss]
             [boxy.core :as boxy]
             [clj-jargon.jargon :as irods]
             [infosquito.es-if :as es]
@@ -115,7 +116,7 @@
       (process-next-task worker)
       (is (= (get-in @es-repo-ref 
                      ["iplant" "file" "/tempZone/home/user1/unreadable-file"])
-             {:name "unreadable-file" :viewers []})))))
+             {:name "unreadable-file" :viewers []}))))
   (testing "index multiple viewers"
     (let [[queue-state-ref es-repo-ref worker] (setup)]    
       (populate-queue queue-state-ref {:type "index entry" :path "/tempZone/home"})
@@ -125,7 +126,18 @@
                :viewers 
                set)
              #{"user1" "user2"}))))
-
+  (testing "missing entry"
+    (let [[queue-state-ref _ worker] (setup)
+          thrown?                    (ss/try+
+                                       (populate-queue queue-state-ref 
+                                                       {:type "index entry" 
+                                                        :path "/missing"})
+                                       (process-next-task worker)
+                                       false
+                                       (catch Object _
+                                         true))]
+      (is (not thrown?)))))
+  
 
 (deftest test-index-members
   (let [[queue-state-ref es-repo-ref worker] (setup)]

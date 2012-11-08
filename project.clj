@@ -9,6 +9,7 @@
                  [org.clojure/tools.logging "0.2.4"]
                  [clojurewerkz/elastisch "1.0.2"]
                  [com.github.drsnyder/beanstalk "1.0.0-clj14"]
+                 [org.irods.jargon/jargon-core "3.2.0"]
                  [slingshot "0.10.3"]
                  [org.iplantc/clj-jargon "0.2.2-SNAPSHOT"]
                  [org.iplantc/clojure-commons "1.2.1-SNAPSHOT"]]
@@ -22,4 +23,7 @@
                  "http://projects.iplantcollaborative.org/archiva/repository/internal/"
                  
                  "sonatype"
-                 "http://oss.sonatype.org/content/repositories/releases/"})
+                 "http://oss.sonatype.org/content/repositories/releases/"
+                 
+                 "renci.repository"
+                 "http://ci-dev.renci.org/nexus/content/repositories/releases/"})
