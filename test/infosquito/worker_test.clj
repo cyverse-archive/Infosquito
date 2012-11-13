@@ -11,6 +11,10 @@
             [clojure-commons.infosquito.work-queue :as queue]))
 
 
+(def ^{:private true} too-long-dir-name 
+  "/tempZone/home/user2/trash/home-rods-wregglej-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.183209331-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+
+  
 (def ^{:private true} init-irods-repo
   {:users                                              #{"user1" "user2"}
    :groups                                             {}
@@ -55,7 +59,13 @@
    "/tempZone/home/user2/readable-file"                {:type    :file
                                                         :acl     {"user2" :read}
                                                         :avus    {}
-                                                        :content ""}})
+                                                        :content ""}
+   "/tempZone/home/user2/trash"                        {:type :normal-dir
+                                                        :acl  {}
+                                                        :avus {}}
+   too-long-dir-name                                   {:type :normal-dir
+                                                        :acl  {}
+                                                        :avus {}}})
 
 
 (defn- setup
@@ -140,20 +150,36 @@
   
 
 (deftest test-index-members
-  (let [[queue-state-ref es-repo-ref worker] (setup)]
-    (populate-queue queue-state-ref {:type "index members" 
-                                     :path "/tempZone/home/user1"})
-    (process-next-task worker)
-    (is (empty? @es-repo-ref))
-    (is (= (set (map #(json/read-json (:payload %)) 
-                     (get (:tubes @queue-state-ref) "infosquito"))) 
-           #{{:type "index entry"   :path "/tempZone/home/user1/readable-file"}
-             {:type "index entry"   :path "/tempZone/home/user1/unreadable-file"}
-             {:type "index entry"   :path "/tempZone/home/user1/readable-dir/"}
-             {:type "index members" :path "/tempZone/home/user1/readable-dir/"}
-             {:type "index entry"   :path "/tempZone/home/user1/unreadable-dir/"}
-             {:type "index members" :path "/tempZone/home/user1/unreadable-dir/"}
-             {:type "index entry"   :path "/tempZone/home/user1/linked-dir/"}}))))
+  (testing "normal operation"
+    (let [[queue-state-ref es-repo-ref worker] (setup)]
+      (populate-queue queue-state-ref {:type "index members" 
+                                       :path "/tempZone/home/user1"})
+      (process-next-task worker)
+      (is (empty? @es-repo-ref))
+      (is (= (set (map #(json/read-json (:payload %)) 
+                       (get (:tubes @queue-state-ref) "infosquito"))) 
+             #{{:type "index entry"   
+                :path "/tempZone/home/user1/readable-file"}
+               {:type "index entry"   
+                :path "/tempZone/home/user1/unreadable-file"}
+               {:type "index entry"   
+                :path "/tempZone/home/user1/readable-dir/"}
+               {:type "index members" 
+                :path "/tempZone/home/user1/readable-dir/"}
+               {:type "index entry"   
+                :path "/tempZone/home/user1/unreadable-dir/"}
+               {:type "index members" 
+                :path "/tempZone/home/user1/unreadable-dir/"}
+               {:type "index entry"   
+                :path "/tempZone/home/user1/linked-dir/"}}))))
+  (testing "dir name too long doesn't throw out"
+    (let [[queue-state-ref _ worker] (setup)]
+      (populate-queue queue-state-ref {:type "index members"
+                                       :path "/tempZone/home/user2/trash"})
+      (is (ss/try+
+            (process-next-task worker)
+            true
+            (catch Object _ false))))))
 
 
 (deftest test-remove-entry

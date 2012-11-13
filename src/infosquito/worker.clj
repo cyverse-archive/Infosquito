@@ -49,6 +49,31 @@
       (ss/throw+ {:type :missing-irods-entry :entry entry-path}))))
 
 
+(defn- get-members
+  "throws:
+    :bad-dir-path - This is thrown if there is something wrong with the provided
+      directory path."
+  [irods dir-path]
+  (ss/try+
+    (let [members (irods/list-paths irods dir-path :ignore-child-exns)]
+      (when (some nil? members)
+        (log/warn "Ignoring members of" dir-path 
+                  "that have names that are too long."))
+      (remove nil? members))
+    (catch [:error_code irods/ERR_BAD_DIRNAME_LENGTH] {:keys [full-path]}
+      (ss/throw+ {:type :bad-dir-path 
+                  :dir  full-path
+                  :msg  "The parent directory path is too long"}))
+    (catch [:error_code irods/ERR_BAD_BASENAME_LENGTH] {:keys [full-path]}
+      (ss/throw+ {:type :bad-dir-path 
+                  :dir  full-path
+                  :msg  "The directory name is too long"}))
+    (catch [:error_code irods/ERR_BAD_PATH_LENGTH] {:keys [full-path]}
+      (ss/throw+ {:type :bad-dir-path 
+                  :dir  full-path
+                  :msg  "The directory path is too long"}))))
+    
+
 (defn- get-viewers
   "throws:
      :missing-irods-entry - This is thrown entry-path doesn't point to a valid
@@ -106,20 +131,22 @@
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker dir-path]
   (log/trace "indexing the members of" dir-path)
-  (ss/try+ 
-    (let [queue (:queue worker)]
-      (irods/with-jargon (:irods-cfg worker) [irods]
-        (doseq [entry (irods/list-paths irods dir-path)]
-          (queue/put queue (json/json-str (mk-task index-entry-task entry)))
-          (when (and (irods/is-dir? irods entry)
-                     (not (irods/is-linked-dir? irods entry)))
-            (queue/put queue (json/json-str (mk-task index-members-task entry)))))))
-    (catch [:type :beanstalkd-oom] {:keys []}
-      (log/warn "Stopping indexing members of" dir-path "."
-                "beanstalkd is out of memory."))
-    (catch [:type :beanstalkd-draining] {:keys []}
-      (log/warn "Stopping indexing members of" dir-path "."
-                "beanstalkd is not accepting new tasks."))))
+  (letfn [(log-stop-warn [reason] (log/warn (str "Stopping indexing members of " 
+                                                 dir-path ". " reason)))]
+    (ss/try+ 
+      (let [queue (:queue worker)]
+        (irods/with-jargon (:irods-cfg worker) [irods]
+          (doseq [entry (get-members irods dir-path)]
+            (queue/put queue (json/json-str (mk-task index-entry-task entry)))
+            (when (and (irods/is-dir? irods entry)
+                       (not (irods/is-linked-dir? irods entry)))
+              (queue/put queue (json/json-str (mk-task index-members-task entry)))))))
+      (catch [:type :beanstalkd-oom] {:keys []}
+        (log-stop-warn "beanstalkd is out of memory."))
+      (catch [:type :beanstalkd-draining] {:keys []}
+        (log-stop-warn "beanstalkd is not accepting new tasks."))
+      (catch [:type :bad-dir-path] {:keys [msg]}
+        (log-stop-warn msg)))))
   
   
 (defn- remove-entry
