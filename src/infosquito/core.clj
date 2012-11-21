@@ -53,6 +53,7 @@
 (defn- run 
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
+     :connection-refused - This is thrown if it can't connect to Elastic Search.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs.
@@ -131,6 +132,8 @@
                       cfg-file ". Exiting.")))
     (catch [:type :zk-perm] {:keys []}
       (log/error "This application cannot run on this machine. Exiting."))
+    (catch [:type :connection-refused] {:keys [msg]}
+      (log/error (str "Cannot connect to Elastic Search. (" msg ") Exiting.")))
     (catch [:type :connection] {:keys [msg]}
       (log/error (str "An error occurred while communicating with the work queue. "
                       "(" msg ") Exiting.")))

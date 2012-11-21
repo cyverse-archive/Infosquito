@@ -4,7 +4,9 @@
             [clojurewerkz.elastisch.rest.document :as cerd]
             [clojurewerkz.elastisch.rest.index :as ceri]
             [cheshire.custom :as json]
-            [clj-http.client :as http]))
+            [clj-http.client :as http]
+			[slingshot.slingshot :as ss])
+  (:import [java.net ConnectException]))
 
 
 ;; FUNCTIONS THAT SHOULD BE IN clojurewerkz.elastisch.rest
@@ -46,6 +48,12 @@
   
 
 (defn mk-indexer
+  "Throws:
+    :connection-refused - This is thrown if a connection cannot be established
+      to Elastic Search"
   [es-url]
-  (cer/connect! es-url)
-  (->Indexer))
+  (ss/try+ 
+    (cer/connect! es-url)
+    (->Indexer)
+    (catch ConnectException e
+      (ss/throw+ {:type :connection-refused :msg (.getMessage e)}))))
