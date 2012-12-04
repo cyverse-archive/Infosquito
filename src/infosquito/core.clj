@@ -50,6 +50,11 @@
              "")))
 
 
+(defn- log-config
+  [props]
+  (dorun (map (fn [[k v]] (log/warn "CONFIG:" k "=" v)) (sort-by key props))))
+
+
 (defn- run
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
@@ -59,6 +64,7 @@
      :unknown-error - This is thrown if an unidentifiable error occurs.
      :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
   [mode props]
+  (log-config props)
   (let [worker (worker/mk-worker (init-irods props)
                                  (mk-queue props)
                                  (es/mk-indexer (mk-es-url props))
