@@ -2,7 +2,7 @@
   "This namespace defines the entry point for Infosquito.  All state should be
    in here."
   (:gen-class)
-  (:require [clojure.tools.cli :as cli] 
+  (:require [clojure.tools.cli :as cli]
             [clojure.tools.logging :as log]
             [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
@@ -19,10 +19,10 @@
   [props name]
   (Integer/parseInt (get props name)))
 
-  
+
 (defn- init-irods
   [props]
-  (irods/init (get props "infosquito.irods.host") 
+  (irods/init (get props "infosquito.irods.host")
               (get props "infosquito.irods.port")
               (get props "infosquito.irods.user")
               (get props "infosquito.irods.password")
@@ -44,17 +44,17 @@
 
 (defn- mk-es-url
   [props]
-  (str (URL. "http" 
-             (get props "infosquito.es.host") 
+  (str (URL. "http"
+             (get props "infosquito.es.host")
              (get-int-prop props "infosquito.es.port")
              "")))
-  
-  
-(defn- run 
+
+
+(defn- run
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
      :connection-refused - This is thrown if it can't connect to Elastic Search.
-     :internal-error - This is thrown if there is an error in the logic error 
+     :internal-error - This is thrown if there is an error in the logic error
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs.
      :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
@@ -64,12 +64,12 @@
                                  (es/mk-indexer (mk-es-url props))
                                  (get props "infosquito.irods.index-root")
                                  (get props "infosquito.es.scroll-ttl")
-                                 (get-int-prop props 
+                                 (get-int-prop props
                                                "infosquito.es.scroll-page-size"))]
     (condp = mode
       :passive (dorun (repeatedly #(worker/process-next-task worker)))
       :sync    (worker/sync-index worker))))
-  
+
 
 (defn- get-local-props
   [cfg-file]
@@ -79,7 +79,7 @@
       (ss/throw+ {:type :cfg-problem :cfg-file cfg-file}))))
 
 
-(defn- get-remote-props 
+(defn- get-remote-props
   []
   (let [zkprops (props/parse-properties "zkhosts.properties")]
     (zk/with-zk (get zkprops "zookeeper")
@@ -87,7 +87,7 @@
         (zk/properties "infosquito")
         (ss/throw+ {:type :zk-perm})))))
 
-  
+
 (defn- map-mode
   [mode-str]
   (condp = mode-str
@@ -100,12 +100,12 @@
   [args]
   (ss/try+
     (cli/cli args
-      ["-c" "--config" 
+      ["-c" "--config"
        "sets the local configuration file to be read, bypassing Zookeeper"]
-      ["-h" "--help" 
+      ["-h" "--help"
        "show help and exit"
        :flag true]
-      ["-m" "--mode" 
+      ["-m" "--mode"
        "Indicates how infosquito should be run. (passive|sync)"
        :default "passive"])
     (catch Exception e
@@ -116,19 +116,19 @@
   [& args]
   (ss/try+
     (let [[opts _ help-str] (parse-args args)]
-      (if (:help opts) 
+      (if (:help opts)
         (println help-str)
         (run (map-mode (:mode opts))
              (if-let [cfg-file (:config opts)]
                (get-local-props cfg-file)
                (get-remote-props)))))
     (catch [:type :cli] {:keys [msg]}
-      (log/error (str "There was a problem reading the command line input. (" 
+      (log/error (str "There was a problem reading the command line input. ("
                       msg ") Exiting.")))
     (catch [:type :invalid-mode] {:keys [mode]}
       (log/error "Invalid mode, " mode))
     (catch [:type :cfg-problem] {:keys [cfg-file]}
-      (log/error str("There was problem reading the configuration file " 
+      (log/error str("There was problem reading the configuration file "
                       cfg-file ". Exiting.")))
     (catch [:type :zk-perm] {:keys []}
       (log/error "This application cannot run on this machine. Exiting."))
@@ -139,6 +139,6 @@
                       "(" msg ") Exiting.")))
     (catch [:type :beanstalkd-oom] {:keys []}
       (log/error "An error occurred. beanstalkd is out of memory and is"
-                 "probably wedged. Exiting.")) 
+                 "probably wedged. Exiting."))
     (catch Object _
       (log/error (:throwable &throw-context) "unexpected error"))))
