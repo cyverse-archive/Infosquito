@@ -14,17 +14,41 @@
   (:import [java.net URL]))
 
 
+(defn- validate-props
+  [props]
+  (letfn [(validate [prop] (when-not (get props prop) 
+                             (ss/throw+ {:type :cfg-problem 
+                                         :msg  (str prop " is missing")})))]
+    (validate "infosquito.beanstalk.host")
+    (validate "infosquito.beanstalk.port")
+    (validate "infosquito.beanstalk.connect-retries")
+    (validate "infosquito.beanstalk.task-ttr")
+    (validate "infosquito.beanstalk.tube")
+    (validate "infosquito.es.host")
+    (validate "infosquito.es.port")
+    (validate "infosquito.es.scroll-ttl")
+    (validate "infosquito.es.scroll-page-size")
+    (validate "infosquito.irods.host")
+    (validate "infosquito.irods.port")
+    (validate "infosquito.irods.user")
+    (validate "infosquito.irods.password")
+    (validate "infosquito.irods.home")
+    (validate "infosquito.irods.zone")
+    (validate "infosquito.irods.default-resource")
+    (validate "infosquito.irods.index-root")))
+
+  
 (defn- load-props
   [cfg-file]
   (ss/try+
-    (let [props (ref nil)]
+    (let [props (ref nil :validator validate-props)]
       (if cfg-file
         (config/load-config-from-file nil cfg-file props)
         (config/load-config-from-zookeeper props "infosquito"))
       (config/log-config @props)
       @props)
     (catch Object _
-      (ss/throw+ {:type :cfg-problem}))))
+      (ss/throw+ {:type :cfg-problem :msg "Failed to load parameters"}))))
         
 
 (defn- get-int-prop
@@ -119,8 +143,9 @@
                       msg ") Exiting.")))
     (catch [:type :invalid-mode] {:keys [mode]}
       (log/error "Invalid mode, " mode))
-    (catch [:type :cfg-problem] {:keys []}
-      (log/error "There was problem loading the configuration values.  Exiting."))
+    (catch [:type :cfg-problem] {:keys [msg]}
+      (log/error (str "There was problem loading the configuration values. (" 
+                      msg ") Exiting.")))
     (catch [:type :connection-refused] {:keys [msg]}
       (log/error (str "Cannot connect to Elastic Search. (" msg ") Exiting.")))
     (catch [:type :connection] {:keys [msg]}
