@@ -11,45 +11,16 @@
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es :as es]
             [infosquito.worker :as worker])
-  (:import [java.net URL]))
+  (:import [java.net URL]
+           [java.util Properties]))
 
 
-(defn- validate-props
-  [props]
-  (letfn [(validate [prop] (when-not (get props prop) 
-                             (ss/throw+ {:type :cfg-problem 
-                                         :msg  (str prop " is missing")})))]
-    (validate "infosquito.beanstalk.host")
-    (validate "infosquito.beanstalk.port")
-    (validate "infosquito.beanstalk.connect-retries")
-    (validate "infosquito.beanstalk.task-ttr")
-    (validate "infosquito.beanstalk.tube")
-    (validate "infosquito.es.host")
-    (validate "infosquito.es.port")
-    (validate "infosquito.es.scroll-ttl")
-    (validate "infosquito.es.scroll-page-size")
-    (validate "infosquito.irods.host")
-    (validate "infosquito.irods.port")
-    (validate "infosquito.irods.user")
-    (validate "infosquito.irods.password")
-    (validate "infosquito.irods.home")
-    (validate "infosquito.irods.zone")
-    (validate "infosquito.irods.default-resource")
-    (validate "infosquito.irods.index-root")))
+(defn- ->config-loader
+  [& [cfg-file]]
+  (if cfg-file
+    (fn [props-ref] (config/load-config-from-file nil cfg-file props-ref))
+    (fn [props-ref] (config/load-config-from-zookeeper props-ref "infosquito"))))
 
-  
-(defn- load-props
-  [cfg-file]
-  (ss/try+
-    (let [props (ref nil :validator validate-props)]
-      (if cfg-file
-        (config/load-config-from-file nil cfg-file props)
-        (config/load-config-from-zookeeper props "infosquito"))
-      (config/log-config @props)
-      @props)
-    (catch Object _
-      (ss/throw+ {:type :cfg-problem :msg "Failed to load parameters"}))))
-        
 
 (defn- get-int-prop
   [props name]
@@ -96,18 +67,71 @@
                     (get-int-prop props "infosquito.es.scroll-page-size")))
  
 
-(defn- process-jobs
+(defn- validate-props
   [props]
-  (let [worker (mk-worker (load-props))]
-    (dorun (repeatedly #(worker/process-next-task worker)))))
+  (let [validate    (fn [label] (when-not (get props label) 
+                                  (log/error "The property" label 
+                                             "is missing from the configuration.")
+                                  false))
+        prop-labels ["infosquito.beanstalk.host"
+                     "infosquito.beanstalk.port"
+                     "infosquito.beanstalk.connect-retries"
+                     "infosquito.beanstalk.task-ttr"
+                     "infosquito.beanstalk.tube"
+                     "infosquito.es.host"
+                     "infosquito.es.port"
+                     "infosquito.es.scroll-ttl"
+                     "infosquito.es.scroll-page-size"
+                     "infosquito.irods.host"
+                     "infosquito.irods.port"
+                     "infosquito.irods.user"
+                     "infosquito.irods.password"
+                     "infosquito.irods.home"
+                     "infosquito.irods.zone"
+                     "infosquito.irods.default-resource"
+                     "infosquito.irods.index-root"
+                     "infosquito.retry-delay"]]
+    (not-any? #(false? (validate %)) prop-labels)))
+    
+  
+(defn- update-props
+  [load-props props]
+    (let [props-ref (ref props :validator validate-props)]
+      (ss/try+
+        (load-props props-ref)
+        (catch Object _
+          (log/error "Failed to load configuration parameters.")))
+      (when (.isEmpty @props-ref)
+        (ss/throw+ {:type :cfg-problem 
+                    :msg "Don't have any configuration parameters."}))
+      (when-not (= props @props-ref) (config/log-config @props-ref))
+      @props-ref))
+        
+
+(defn- process-jobs
+  [load-props]
+  (loop [old-props (Properties.)]
+    (let [props (update-props load-props old-props)]
+      (ss/try+
+        (dorun (repeatedly #(worker/process-next-task (mk-worker props))))
+        (catch [:type :connection-refused] {:keys [msg]}
+          (log/error "Cannot connect to Elastic Search." msg))
+        (catch [:type :connection] {:keys [msg]}
+          (log/error "An error occurred while communicating with Beanstalk." msg))
+        (catch [:type :beanstalkd-oom] {:keys []}
+          (log/error "An error occurred. beanstalkd is out of memory and is"
+                     "probably wedged.")))
+      (.wait props (get-int-prop "infosquito.retry-delay"))
+      (recur props))))
 
 
 (defn- sync-index
   [load-props]
-  (worker/sync-index (mk-worker (load-props))))
+  (let [worker (mk-worker (update-props load-props (Properties.)))]
+    (worker/sync-index worker)))
   
 
-(defn- map-mode
+(defn- ->mode
   [mode-str]
   (condp = mode-str
     "sync"   sync-index
@@ -137,7 +161,7 @@
     (let [[opts _ help-str] (parse-args args)]
       (if (:help opts)
         (println help-str)
-        ((map-mode (:mode opts)) #(load-props (:config opts)))))
+        ((->mode (:mode opts)) (->config-loader (:config opts)))))
     (catch [:type :cli] {:keys [msg]}
       (log/error (str "There was a problem reading the command line input. ("
                       msg ") Exiting.")))
@@ -146,13 +170,5 @@
     (catch [:type :cfg-problem] {:keys [msg]}
       (log/error (str "There was problem loading the configuration values. (" 
                       msg ") Exiting.")))
-    (catch [:type :connection-refused] {:keys [msg]}
-      (log/error (str "Cannot connect to Elastic Search. (" msg ") Exiting.")))
-    (catch [:type :connection] {:keys [msg]}
-      (log/error (str "An error occurred while communicating with the work queue. "
-                      "(" msg ") Exiting.")))
-    (catch [:type :beanstalkd-oom] {:keys []}
-      (log/error "An error occurred. beanstalkd is out of memory and is"
-                 "probably wedged. Exiting."))
     (catch Object _
       (log/error (:throwable &throw-context) "unexpected error"))))
