@@ -73,8 +73,8 @@
                                  (get-int-prop props
                                                "infosquito.es.scroll-page-size"))]
     (condp = mode
-      :passive (dorun (repeatedly #(worker/process-next-task worker)))
-      :sync    (worker/sync-index worker))))
+      :sync   (worker/sync-index worker)))
+      :worker (dorun (repeatedly #(worker/process-next-task worker))))
 
 
 (defn- get-local-props
@@ -97,9 +97,9 @@
 (defn- map-mode
   [mode-str]
   (condp = mode-str
-    "passive" :passive
-    "sync"    :sync
-              (ss/throw+ {:type :invalid-mode :mode mode-str})))
+    "sync"   :sync
+    "worker" :worker
+             (ss/throw+ {:type :invalid-mode :mode mode-str})))
 
 
 (defn- parse-args
@@ -112,8 +112,8 @@
        "show help and exit"
        :flag true]
       ["-m" "--mode"
-       "Indicates how infosquito should be run. (passive|sync)"
-       :default "passive"])
+       "Indicates how infosquito should be run. (sync|worker)"
+       :default "worker"])
     (catch Exception e
       (ss/throw+ {:type :cli :msg (.getMessage e)}))))
 
