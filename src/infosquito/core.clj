@@ -14,6 +14,19 @@
   (:import [java.net URL]))
 
 
+(defn- load-props
+  [cfg-file]
+  (ss/try+
+    (let [props (ref nil)]
+      (if cfg-file
+        (config/load-config-from-file nil cfg-file props)
+        (config/load-config-from-zookeeper props "infosquito"))
+      (config/log-config @props)
+      @props)
+    (catch Object _
+      (ss/throw+ {:type :cfg-problem}))))
+        
+
 (defn- get-int-prop
   [props name]
   (Integer/parseInt (get props name)))
@@ -49,23 +62,32 @@
                      (get props "infosquito.beanstalk.tube"))))
 
 
-(defn- load-props
-  [cfg-file]
-  (ss/try+
-    (let [props (ref nil)]
-      (if cfg-file
-        (config/load-config-from-file nil cfg-file props)
-        (config/load-config-from-zookeeper props "infosquito"))
-      @props)
-    (catch Object _
-      (ss/throw+ {:type :cfg-problem}))))
-        
+(defn- mk-worker
+  [props]
+  (worker/mk-worker (init-irods props)
+                    (mk-queue props)
+                    (es/mk-indexer (mk-es-url props))
+                    (get props "infosquito.irods.index-root")
+                    (get props "infosquito.es.scroll-ttl")
+                    (get-int-prop props "infosquito.es.scroll-page-size")))
+ 
+
+(defn- process-jobs
+  [props]
+  (let [worker (mk-worker (load-props))]
+    (dorun (repeatedly #(worker/process-next-task worker)))))
+
+
+(defn- sync-index
+  [load-props]
+  (worker/sync-index (mk-worker (load-props))))
   
+
 (defn- map-mode
   [mode-str]
   (condp = mode-str
-    "sync"   :sync
-    "worker" :worker
+    "sync"   sync-index
+    "worker" process-jobs
              (ss/throw+ {:type :invalid-mode :mode mode-str})))
 
 
@@ -85,35 +107,13 @@
       (ss/throw+ {:type :cli :msg (.getMessage e)}))))
 
 
-(defn- run
-  "Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it can't connect to Elastic Search.
-     :internal-error - This is thrown if there is an error in the logic error
-       internal to the worker.
-     :unknown-error - This is thrown if an unidentifiable error occurs.
-     :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
-  [mode props]
-  (config/log-config props)
-  (let [worker (worker/mk-worker (init-irods props)
-                                 (mk-queue props)
-                                 (es/mk-indexer (mk-es-url props))
-                                 (get props "infosquito.irods.index-root")
-                                 (get props "infosquito.es.scroll-ttl")
-                                 (get-int-prop props
-                                               "infosquito.es.scroll-page-size"))]
-    (condp = mode
-      :sync   (worker/sync-index worker)))
-      :worker (dorun (repeatedly #(worker/process-next-task worker))))
-
-
 (defn -main
   [& args]
   (ss/try+
     (let [[opts _ help-str] (parse-args args)]
       (if (:help opts)
         (println help-str)
-        (run (map-mode (:mode opts)) (load-props (:config opts)))))
+        ((map-mode (:mode opts)) #(load-props (:config opts)))))
     (catch [:type :cli] {:keys [msg]}
       (log/error (str "There was a problem reading the command line input. ("
                       msg ") Exiting.")))
