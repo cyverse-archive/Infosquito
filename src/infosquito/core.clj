@@ -7,8 +7,9 @@
             [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
-            [clojure-commons.config :as config]
+            [clojure-commons.config :as cc-config]
             [clojure-commons.infosquito.work-queue :as queue]
+            [infosquito.config :as config]
             [infosquito.es :as es]
             [infosquito.worker :as worker])
   (:import [java.net URL]
@@ -18,85 +19,44 @@
 (defn- ->config-loader
   [& [cfg-file]]
   (if cfg-file
-    (fn [props-ref] (config/load-config-from-file nil cfg-file props-ref))
-    (fn [props-ref] (config/load-config-from-zookeeper props-ref "infosquito"))))
-
-
-(defn- get-int-prop
-  [props name]
-  (Integer/parseInt (get props name)))
+    (fn [props-ref] (cc-config/load-config-from-file nil cfg-file props-ref))
+    (fn [props-ref] (cc-config/load-config-from-zookeeper props-ref "infosquito"))))
 
 
 (defn- init-irods
   [props]
-  (irods/init (get props "infosquito.irods.host")
-              (get props "infosquito.irods.port")
-              (get props "infosquito.irods.user")
-              (get props "infosquito.irods.password")
-              (get props "infosquito.irods.home")
-              (get props "infosquito.irods.zone")
-              (get props "infosquito.irods.default-resource")))
-
-
-(defn- mk-es-url
-  [props]
-  (str (URL. "http"
-             (get props "infosquito.es.host")
-             (get-int-prop props "infosquito.es.port")
-             "")))
+  (irods/init (config/get-irods-host props)
+              (str (config/get-irods-port props))
+              (config/get-irods-user props)
+              (config/get-irods-password props)
+              (config/get-irods-home props)
+              (config/get-irods-zone props)
+              (config/get-irods-default-resource props)))
 
 
 (defn- mk-queue
   [props]
-  (let [port (get-int-prop props "infosquito.beanstalk.port")
-        ctor #(beanstalk/new-beanstalk (get props "infosquito.beanstalk.host")
-                                       port)]
+  (letfn [(ctor [] (beanstalk/new-beanstalk (get-beanstalk-port props) 
+                                            (get-beanstalk-port props)))]
     (queue/mk-client ctor
-                     (get-int-prop props "infosquito.beanstalk.connect-retries")
-                     (get-int-prop props "infosquito.beanstalk.task-ttr")
-                     (get props "infosquito.beanstalk.tube"))))
+                     (get-beanstalk-connect-retries props)
+                     (get-beanstalk-job-ttr props)
+                     (get-beanstalk-tube props))))
 
 
 (defn- mk-worker
   [props]
   (worker/mk-worker (init-irods props)
                     (mk-queue props)
-                    (es/mk-indexer (mk-es-url props))
-                    (get props "infosquito.irods.index-root")
-                    (get props "infosquito.es.scroll-ttl")
-                    (get-int-prop props "infosquito.es.scroll-page-size")))
+                    (es/mk-indexer (str (config/get-es-url props)))
+                    (get-irods-index-root props)
+                    (get-es-scroll-ttl props)
+                    (get-es-scroll-page-size props)))
  
 
-(defn- validate-props
-  [props]
-  (let [validate    (fn [label] (when-not (get props label) 
-                                  (log/error "The property" label 
-                                             "is missing from the configuration.")
-                                  false))
-        prop-labels ["infosquito.beanstalk.host"
-                     "infosquito.beanstalk.port"
-                     "infosquito.beanstalk.connect-retries"
-                     "infosquito.beanstalk.task-ttr"
-                     "infosquito.beanstalk.tube"
-                     "infosquito.es.host"
-                     "infosquito.es.port"
-                     "infosquito.es.scroll-ttl"
-                     "infosquito.es.scroll-page-size"
-                     "infosquito.irods.host"
-                     "infosquito.irods.port"
-                     "infosquito.irods.user"
-                     "infosquito.irods.password"
-                     "infosquito.irods.home"
-                     "infosquito.irods.zone"
-                     "infosquito.irods.default-resource"
-                     "infosquito.irods.index-root"
-                     "infosquito.retry-delay"]]
-    (not-any? #(false? (validate %)) prop-labels)))
-    
-  
 (defn- update-props
   [load-props props]
-    (let [props-ref (ref props :validator validate-props)]
+    (let [props-ref (ref props :validator #(config/validate-props % log/error))]
       (ss/try+
         (load-props props-ref)
         (catch Object _
