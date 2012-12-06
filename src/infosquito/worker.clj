@@ -71,7 +71,9 @@
     (catch [:error_code irods/ERR_BAD_PATH_LENGTH] {:keys [full-path]}
       (ss/throw+ {:type :bad-dir-path 
                   :dir  full-path
-                  :msg  "The directory path is too long"}))))
+                  :msg  "The directory path is too long"}))
+    (catch FileNotFoundException _
+      (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
     
 
 (defn- get-viewers
@@ -146,7 +148,10 @@
       (catch [:type :beanstalkd-draining] {:keys []}
         (log-stop-warn "beanstalkd is not accepting new tasks."))
       (catch [:type :bad-dir-path] {:keys [msg]}
-        (log-stop-warn msg)))))
+        (log-stop-warn msg))
+      (catch [:type :missing-irods-entry] {:keys []}
+        (log/debug "Stopping indexing members of" dir-path 
+                   "because it doesn't exist anymore.")))))
   
   
 (defn- remove-entry
