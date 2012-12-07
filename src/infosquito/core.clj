@@ -7,10 +7,10 @@
             [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
-            [clojure-commons.config :as cc-config]
+            [clojure-commons.config :as config]
             [clojure-commons.infosquito.work-queue :as queue]
-            [infosquito.config :as config]
             [infosquito.es :as es]
+            [infosquito.props :as props]
             [infosquito.worker :as worker])
   (:import [java.net URL]
            [java.util Properties]))
@@ -19,19 +19,19 @@
 (defn- ->config-loader
   [& [cfg-file]]
   (if cfg-file
-    (fn [props-ref] (cc-config/load-config-from-file nil cfg-file props-ref))
-    (fn [props-ref] (cc-config/load-config-from-zookeeper props-ref "infosquito"))))
+    (fn [props-ref] (config/load-config-from-file nil cfg-file props-ref))
+    (fn [props-ref] (config/load-config-from-zookeeper props-ref "infosquito"))))
 
 
 (defn- init-irods
   [props]
-  (irods/init (config/get-irods-host props)
-              (str (config/get-irods-port props))
-              (config/get-irods-user props)
-              (config/get-irods-password props)
-              (config/get-irods-home props)
-              (config/get-irods-zone props)
-              (config/get-irods-default-resource props)))
+  (irods/init (props/get-irods-host props)
+              (str (props/get-irods-port props))
+              (props/get-irods-user props)
+              (props/get-irods-password props)
+              (props/get-irods-home props)
+              (props/get-irods-zone props)
+              (props/get-irods-default-resource props)))
 
 
 (defn- mk-queue
@@ -48,7 +48,7 @@
   [props]
   (worker/mk-worker (init-irods props)
                     (mk-queue props)
-                    (es/mk-indexer (str (config/get-es-url props)))
+                    (es/mk-indexer (str (props/get-es-url props)))
                     (get-irods-index-root props)
                     (get-es-scroll-ttl props)
                     (get-es-scroll-page-size props)))
@@ -56,15 +56,15 @@
 
 (defn- update-props
   [load-props props]
-    (let [props-ref (ref props :validator #(config/validate-props % log/error))]
+    (let [props-ref (ref props :validator #(props/validate % log/error))]
       (ss/try+
         (load-props props-ref)
         (catch Object _
           (log/error "Failed to load configuration parameters.")))
       (when (.isEmpty @props-ref)
         (ss/throw+ {:type :cfg-problem 
-                    :msg "Don't have any configuration parameters."}))
-      (when-not (= props @props-ref) (config/log-config @props-ref))
+                    :msg  "Don't have any configuration parameters."}))
+      (when-not (= props @props-ref) (config/log-props @props-ref))
       @props-ref))
         
 

@@ -1,4 +1,4 @@
-(ns infosquito.config
+(ns infosquito.props
   "This namespace holds all of the logic for managing the configuration values"
   (:import [java.net URL]))
 
@@ -91,29 +91,29 @@
   (get props "infosquito.irods.zone"))
 
 
-(defn validate-props
+(defn validate
   [props log-invalid]
   (let [exists?     (fn [label] 
                       (if (get props label)
                         true
                         (log-invalid "The property" label 
                                      "is missing from the configuration.")))     
-        prop-labels ["infosquito.beanstalk.host"
-                     "infosquito.beanstalk.port"
-                     "infosquito.beanstalk.connect-retries"
-                     "infosquito.beanstalk.task-ttr"
-                     "infosquito.beanstalk.tube"
-                     "infosquito.es.host"
-                     "infosquito.es.port"
-                     "infosquito.es.scroll-ttl"
-                     "infosquito.es.scroll-page-size"
-                     "infosquito.irods.host"
-                     "infosquito.irods.port"
-                     "infosquito.irods.user"
-                     "infosquito.irods.password"
-                     "infosquito.irods.home"
-                     "infosquito.irods.zone"
-                     "infosquito.irods.default-resource"
-                     "infosquito.irods.index-root"
-                     "infosquito.retry-delay"]]
-    (every? exists? prop-labels)))
+        labels ["infosquito.beanstalk.host"
+                "infosquito.beanstalk.port"
+                "infosquito.beanstalk.connect-retries"
+                "infosquito.beanstalk.task-ttr"
+                "infosquito.beanstalk.tube"
+                "infosquito.es.host"
+                "infosquito.es.port"
+                "infosquito.es.scroll-ttl"
+                "infosquito.es.scroll-page-size"
+                "infosquito.irods.host"
+                "infosquito.irods.port"
+                "infosquito.irods.user"
+                "infosquito.irods.password"
+                "infosquito.irods.home"
+                "infosquito.irods.zone"
+                "infosquito.irods.default-resource"
+                "infosquito.irods.index-root"
+                "infosquito.retry-delay"]]
+    (every? exists? labels)))
