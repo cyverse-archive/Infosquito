@@ -36,12 +36,12 @@
 
 (defn- mk-queue
   [props]
-  (letfn [(ctor [] (beanstalk/new-beanstalk (get-beanstalk-host props) 
-                                            (get-beanstalk-port props)))]
+  (letfn [(ctor [] (beanstalk/new-beanstalk (props/get-beanstalk-host props) 
+                                            (props/get-beanstalk-port props)))]
     (queue/mk-client ctor
                      1
-                     (get-beanstalk-job-ttr props)
-                     (get-beanstalk-tube props))))
+                     (props/get-beanstalk-job-ttr props)
+                     (props/get-beanstalk-tube props))))
 
 
 (defn- mk-worker
@@ -49,9 +49,9 @@
   (worker/mk-worker (init-irods props)
                     (mk-queue props)
                     (es/mk-indexer (str (props/get-es-url props)))
-                    (get-irods-index-root props)
-                    (get-es-scroll-ttl props)
-                    (get-es-scroll-page-size props)))
+                    (props/get-irods-index-root props)
+                    (props/get-es-scroll-ttl props)
+                    (props/get-es-scroll-page-size props)))
  
 
 (defn- update-props
