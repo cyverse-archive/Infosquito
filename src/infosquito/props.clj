@@ -8,11 +8,6 @@
   (Integer/parseInt (get props name)))
 
 
-(defn get-beanstalk-connect-retries
-  [props]
-  (get-int-prop props "infosquito.beanstalk.connect-retries"))
-
-  
 (defn get-beanstalk-host
   [props]
   (get props "infosquito.beanstalk.host"))
@@ -101,7 +96,6 @@
                                 false)))     
         labels ["infosquito.beanstalk.host"
                 "infosquito.beanstalk.port"
-                "infosquito.beanstalk.connect-retries"
                 "infosquito.beanstalk.task-ttr"
                 "infosquito.beanstalk.tube"
                 "infosquito.es.host"

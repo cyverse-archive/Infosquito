@@ -36,10 +36,10 @@
 
 (defn- mk-queue
   [props]
-  (letfn [(ctor [] (beanstalk/new-beanstalk (get-beanstalk-port props) 
+  (letfn [(ctor [] (beanstalk/new-beanstalk (get-beanstalk-host props) 
                                             (get-beanstalk-port props)))]
     (queue/mk-client ctor
-                     (get-beanstalk-connect-retries props)
+                     1
                      (get-beanstalk-job-ttr props)
                      (get-beanstalk-tube props))))
 

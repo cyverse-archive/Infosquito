@@ -10,10 +10,6 @@
     (.load (FileReader. "dev-resources/local.properties"))))
 
 
-(deftest test-get-beanstalk-connect-retries
-  (is (= 3 (get-beanstalk-connect-retries props))))
-
-
 (deftest test-get-beanstalk-host
   (is (= "localhost" (get-beanstalk-host props))))
 
