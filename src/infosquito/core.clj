@@ -57,7 +57,9 @@
 (defn- update-props
   [load-props props]
     (let [props-ref (ref props 
-                         :validator (fn [n] (props/validate n #(log/error %&))))]
+                         :validator (fn [p] (if (empty? p)
+                                              true
+                                              (props/validate p #(log/error %&)))))]
       (ss/try+
         (load-props props-ref)
         (catch Object _
@@ -65,7 +67,7 @@
       (when (.isEmpty @props-ref)
         (ss/throw+ {:type :cfg-problem 
                     :msg  "Don't have any configuration parameters."}))
-      (when-not (= props @props-ref) (config/log-config @props-ref))
+      (when-not (= props @props-ref) (config/log-config props-ref))
       @props-ref))
         
 
