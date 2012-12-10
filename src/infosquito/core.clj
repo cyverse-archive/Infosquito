@@ -56,7 +56,8 @@
 
 (defn- update-props
   [load-props props]
-    (let [props-ref (ref props :validator #(props/validate % log/error))]
+    (let [props-ref (ref props 
+                         :validator (fn [n] (props/validate n #(log/error %&))))]
       (ss/try+
         (load-props props-ref)
         (catch Object _
