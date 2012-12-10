@@ -56,4 +56,4 @@
     (cer/connect! es-url)
     (->Indexer)
     (catch ConnectException e
-      (ss/throw+ {:type :connection-refused :msg (.getMessage e)}))))
+      (ss/throw+ {:type :connection-refused :msg (if-let [m (.getMessage e)] m "")}))))

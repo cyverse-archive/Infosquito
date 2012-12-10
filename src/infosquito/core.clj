@@ -16,6 +16,19 @@
            [java.util Properties]))
 
 
+(defmacro ^{:private true} trap-known-exceptions!
+  [& body]
+  `(ss/try+
+     (do ~@body)
+     (catch [:type :connection-refused] {:keys [~'msg]}
+       (log/error "Cannot connect to Elastic Search." ~'msg))
+     (catch [:type :connection] {:keys [~'msg]}
+       (log/error "An error occurred while communicating with Beanstalk." ~'msg))
+     (catch [:type :beanstalkd-oom] {:keys []}
+       (log/error "An error occurred. beanstalkd is out of memory and is"
+                  " probably wedged."))))
+  
+
 (defn- ->config-loader
   [& [cfg-file]]
   (if cfg-file
@@ -75,23 +88,17 @@
   [load-props]
   (loop [old-props (Properties.)]
     (let [props (update-props load-props old-props)]
-      (ss/try+
-        (dorun (repeatedly #(worker/process-next-task (mk-worker props))))
-        (catch [:type :connection-refused] {:keys [msg]}
-          (log/error "Cannot connect to Elastic Search." msg))
-        (catch [:type :connection] {:keys [msg]}
-          (log/error "An error occurred while communicating with Beanstalk." msg))
-        (catch [:type :beanstalkd-oom] {:keys []}
-          (log/error "An error occurred. beanstalkd is out of memory and is"
-                     "probably wedged.")))
+      (trap-known-exceptions! 
+        (dorun (repeatedly #(worker/process-next-task (mk-worker props)))))
       (.wait props (props/get-retry-delay props))
       (recur props))))
 
 
 (defn- sync-index
   [load-props]
-  (let [worker (mk-worker (update-props load-props (Properties.)))]
-    (worker/sync-index worker)))
+  (trap-known-exceptions!
+    (let [worker (mk-worker (update-props load-props (Properties.)))]
+      (worker/sync-index worker))))
   
 
 (defn- ->mode
