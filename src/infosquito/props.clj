@@ -18,7 +18,7 @@
   (get props "infosquito.beanstalk.host"))
   
 
-(defn get-beastalk-job-ttr
+(defn get-beanstalk-job-ttr
   [props]
   (get-int-prop props "infosquito.beanstalk.task-ttr"))
 
@@ -93,11 +93,12 @@
 
 (defn validate
   [props log-invalid]
-  (let [exists?     (fn [label] 
-                      (if (get props label)
-                        true
-                        (log-invalid "The property" label 
-                                     "is missing from the configuration.")))     
+  (let [exists? (fn [label] (if (get props label)
+                              true
+                              (do
+                                (log-invalid "The property" label 
+                                             "is missing from the configuration.")
+                                false)))     
         labels ["infosquito.beanstalk.host"
                 "infosquito.beanstalk.port"
                 "infosquito.beanstalk.connect-retries"

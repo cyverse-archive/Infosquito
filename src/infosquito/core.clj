@@ -81,7 +81,7 @@
         (catch [:type :beanstalkd-oom] {:keys []}
           (log/error "An error occurred. beanstalkd is out of memory and is"
                      "probably wedged.")))
-      (.wait props (get-int-prop "infosquito.retry-delay"))
+      (.wait props (get-retry-delay props))
       (recur props))))
 
 
