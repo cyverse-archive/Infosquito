@@ -86,6 +86,11 @@
   (get props "infosquito.irods.zone"))
 
 
+(defn get-retry-delay
+  [props]
+  (get-int-prop props "infosquito.retry-delay"))
+
+
 (defn validate
   [props log-invalid]
   (let [exists? (fn [label] (if (get props label)

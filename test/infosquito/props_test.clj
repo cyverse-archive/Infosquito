@@ -71,6 +71,10 @@
   (is (= "tempZone" (get-irods-zone props))))
 
 
+(deftest test-get-retry-delay
+  (is (= 10 (get-retry-delay props))))
+
+        
 (deftest test-validate
   (testing "all properties to be validated are in local.properties"
     (is (validate props println)))
