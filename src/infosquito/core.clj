@@ -65,7 +65,7 @@
       (when (.isEmpty @props-ref)
         (ss/throw+ {:type :cfg-problem 
                     :msg  "Don't have any configuration parameters."}))
-      (when-not (= props @props-ref) (config/log-props @props-ref))
+      (when-not (= props @props-ref) (config/log-config @props-ref))
       @props-ref))
         
 
@@ -82,7 +82,7 @@
         (catch [:type :beanstalkd-oom] {:keys []}
           (log/error "An error occurred. beanstalkd is out of memory and is"
                      "probably wedged.")))
-      (.wait props (get-retry-delay props))
+      (.wait props (props/get-retry-delay props))
       (recur props))))
 
 
