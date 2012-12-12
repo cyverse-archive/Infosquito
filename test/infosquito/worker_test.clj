@@ -145,7 +145,7 @@
                                        (process-next-task worker)
                                        false
                                        (catch Object _
-                                         true))]
+										  true))]
       (is (not thrown?)))))
   
 

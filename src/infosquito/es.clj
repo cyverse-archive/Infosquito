@@ -56,4 +56,7 @@
     (cer/connect! es-url)
     (->Indexer)
     (catch ConnectException e
-      (ss/throw+ {:type :connection-refused :msg (if-let [m (.getMessage e)] m "")}))))
+      (ss/throw+ {:type :connection-refused 
+                  :msg (str "Cannot connect to Elastic Search. " 
+                            (if-let [m (.getMessage e)] m ""))}))))
+

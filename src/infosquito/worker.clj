@@ -9,7 +9,8 @@
             [clojure-commons.file-utils :as file]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es-if :as es])
-  (:import [org.irods.jargon.core.exception FileNotFoundException]))
+  (:import [org.irods.jargon.core.exception FileNotFoundException
+                                            JargonException]))
 
 
 (def ^{:private true} index "iplant")
@@ -36,7 +37,6 @@
 
 
 ;; IRODS Functions
-
 
 (defn- get-mapping-type
   "throws:
@@ -107,11 +107,22 @@
 ;; Work Logic
 
 
+(defmacro ^{:private true} with-irods
+  [worker irods-sym & body]
+  `(ss/try+
+     (irods/with-jargon (:irods-cfg ~worker) ~irods-sym ~@body)
+     (catch JargonException e#
+       (ss/throw+ {:type :connection-refused 
+                   :msg  (str "Failed to connect to iRODS. " (.getMessage e#))}))))
+  
+
 (defn- index-entry
+  "Throws:
+     :connection-refused - This is thrown if it fails to connect to iRODS."
   [worker path]
   (log/trace "indexing" path)
   (ss/try+
-    (irods/with-jargon (:irods-cfg worker) [irods]
+    (with-irods worker [irods]
       (let [viewers (get-viewers irods path)]
         (log-when-es-failed "index entry"
                             (es/put (:indexer worker) 
@@ -126,6 +137,7 @@
 (defn- index-members
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
+     :connection-refused - This is thrown if it fails to connect to iRODS.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the work queue.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -135,7 +147,7 @@
                                                  dir-path ". " reason)))]
     (ss/try+ 
       (let [queue (:queue worker)]
-        (irods/with-jargon (:irods-cfg worker) [irods]
+        (with-irods worker [irods]
           (doseq [entry (get-members irods dir-path)]
             (queue/put queue (json/json-str (mk-task index-entry-task entry)))
             (when (and (irods/is-dir? irods entry)
@@ -174,6 +186,7 @@
 (defn- remove-missing-entries
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
+     :connection-refused - This is thrown if it fails to connect to iRODS.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -181,7 +194,7 @@
   (ss/try+
     (let [indexer (:indexer worker)]
       (when (es/exists? indexer index)
-        (irods/with-jargon (:irods-cfg worker) [irods]
+        (with-irods worker [irods]
           (loop [scroll-id (init-index-scrolling worker)]
             (let [resp (es/scroll indexer scroll-id (:scroll-ttl worker))]
               (if-not (:_scroll_id resp) 
@@ -205,6 +218,7 @@
 (defn- sync-with-repo
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
+     :connection-refused - This is thrown if it fails to connect to iRODS.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -217,6 +231,7 @@
 (defn- dispatch-task
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
+     :connection-refused - This is thrown if it fails to connect to iRODS.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -263,6 +278,7 @@
 
    Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
+     :connection-refused - This is thrown if it fails to connect to iRODS.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs.
@@ -287,8 +303,10 @@
 
    Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
+     :connection-refused - This is thrown if it fails to connect to iRODS.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker]
   (queue/with-server (:queue worker) (sync-with-repo worker)))
+

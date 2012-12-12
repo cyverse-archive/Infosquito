@@ -21,7 +21,7 @@
   `(ss/try+
      (do ~@body)
      (catch [:type :connection-refused] {:keys [~'msg]}
-       (log/error "Cannot connect to Elastic Search." ~'msg))
+       (log/error "connection failure." ~'msg))
      (catch [:type :connection] {:keys [~'msg]}
        (log/error "An error occurred while communicating with Beanstalk." ~'msg))
      (catch [:type :beanstalkd-oom] {:keys []}
