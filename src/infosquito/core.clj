@@ -7,99 +7,106 @@
             [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
-            [clojure-commons.clavin-client :as zk]
+            [clojure-commons.config :as config]
             [clojure-commons.infosquito.work-queue :as queue]
-            [clojure-commons.props :as props]
             [infosquito.es :as es]
+            [infosquito.props :as props]
             [infosquito.worker :as worker])
-  (:import [java.net URL]))
+  (:import [java.net URL]
+           [java.util Properties]))
 
 
-(defn- get-int-prop
-  [props name]
-  (Integer/parseInt (get props name)))
+(defmacro ^{:private true} trap-known-exceptions!
+  [& body]
+  `(ss/try+
+     (do ~@body)
+     (catch [:type :connection-refused] {:keys [~'msg]}
+       (log/error "connection failure." ~'msg))
+     (catch [:type :connection] {:keys [~'msg]}
+       (log/error "An error occurred while communicating with Beanstalk." ~'msg))
+     (catch [:type :beanstalkd-oom] {:keys []}
+       (log/error "An error occurred. beanstalkd is out of memory and is"
+                  " probably wedged."))))
+  
+
+(defn- ->config-loader
+  [& [cfg-file]]
+  (if cfg-file
+    (fn [props-ref] (config/load-config-from-file nil cfg-file props-ref))
+    (fn [props-ref] (config/load-config-from-zookeeper props-ref "infosquito"))))
 
 
 (defn- init-irods
   [props]
-  (irods/init (get props "infosquito.irods.host")
-              (get props "infosquito.irods.port")
-              (get props "infosquito.irods.user")
-              (get props "infosquito.irods.password")
-              (get props "infosquito.irods.home")
-              (get props "infosquito.irods.zone")
-              (get props "infosquito.irods.default-resource")))
+  (irods/init (props/get-irods-host props)
+              (str (props/get-irods-port props))
+              (props/get-irods-user props)
+              (props/get-irods-password props)
+              (props/get-irods-home props)
+              (props/get-irods-zone props)
+              (props/get-irods-default-resource props)))
 
 
 (defn- mk-queue
   [props]
-  (let [port (get-int-prop props "infosquito.beanstalk.port")
-        ctor #(beanstalk/new-beanstalk (get props "infosquito.beanstalk.host")
-                                       port)]
+  (letfn [(ctor [] (beanstalk/new-beanstalk (props/get-beanstalk-host props) 
+                                            (props/get-beanstalk-port props)))]
     (queue/mk-client ctor
-                     (get-int-prop props "infosquito.beanstalk.connect-retries")
-                     (get-int-prop props "infosquito.beanstalk.task-ttr")
-                     (get props "infosquito.beanstalk.tube"))))
+                     1
+                     (props/get-beanstalk-job-ttr props)
+                     (props/get-beanstalk-tube props))))
 
 
-(defn- mk-es-url
+(defn- mk-worker
   [props]
-  (str (URL. "http"
-             (get props "infosquito.es.host")
-             (get-int-prop props "infosquito.es.port")
-             "")))
+  (worker/mk-worker (init-irods props)
+                    (mk-queue props)
+                    (es/mk-indexer (str (props/get-es-url props)))
+                    (props/get-irods-index-root props)
+                    (props/get-es-scroll-ttl props)
+                    (props/get-es-scroll-page-size props)))
+ 
+
+(defn- update-props
+  [load-props props]
+    (let [props-ref (ref props 
+                         :validator (fn [p] (if (empty? p)
+                                              true
+                                              (props/validate p #(log/error %&)))))]
+      (ss/try+
+        (load-props props-ref)
+        (catch Object _
+          (log/error "Failed to load configuration parameters.")))
+      (when (.isEmpty @props-ref)
+        (ss/throw+ {:type :cfg-problem 
+                    :msg  "Don't have any configuration parameters."}))
+      (when-not (= props @props-ref) (config/log-config props-ref))
+      @props-ref))
+        
+
+(defn- process-jobs
+  [load-props]
+  (loop [old-props (Properties.)]
+    (let [props (update-props load-props old-props)]
+      (trap-known-exceptions! 
+        (dorun (repeatedly #(worker/process-next-task (mk-worker props)))))
+      (Thread/sleep (props/get-retry-delay props))
+      (recur props))))
 
 
-(defn- log-config
-  [props]
-  (dorun (map (fn [[k v]] (log/warn "CONFIG:" k "=" v)) (sort-by key props))))
+(defn- sync-index
+  [load-props]
+  (trap-known-exceptions!
+    (let [worker (mk-worker (update-props load-props (Properties.)))]
+      (worker/sync-index worker))))
+  
 
-
-(defn- run
-  "Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it can't connect to Elastic Search.
-     :internal-error - This is thrown if there is an error in the logic error
-       internal to the worker.
-     :unknown-error - This is thrown if an unidentifiable error occurs.
-     :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
-  [mode props]
-  (log-config props)
-  (let [worker (worker/mk-worker (init-irods props)
-                                 (mk-queue props)
-                                 (es/mk-indexer (mk-es-url props))
-                                 (get props "infosquito.irods.index-root")
-                                 (get props "infosquito.es.scroll-ttl")
-                                 (get-int-prop props
-                                               "infosquito.es.scroll-page-size"))]
-    (condp = mode
-      :passive (dorun (repeatedly #(worker/process-next-task worker)))
-      :sync    (worker/sync-index worker))))
-
-
-(defn- get-local-props
-  [cfg-file]
-  (ss/try+
-    (props/read-properties cfg-file)
-    (catch Object _
-      (ss/throw+ {:type :cfg-problem :cfg-file cfg-file}))))
-
-
-(defn- get-remote-props
-  []
-  (let [zkprops (props/parse-properties "zkhosts.properties")]
-    (zk/with-zk (get zkprops "zookeeper")
-      (if (zk/can-run?)
-        (zk/properties "infosquito")
-        (ss/throw+ {:type :zk-perm})))))
-
-
-(defn- map-mode
+(defn- ->mode
   [mode-str]
   (condp = mode-str
-    "passive" :passive
-    "sync"    :sync
-              (ss/throw+ {:type :invalid-mode :mode mode-str})))
+    "sync"   sync-index
+    "worker" process-jobs
+             (ss/throw+ {:type :invalid-mode :mode mode-str})))
 
 
 (defn- parse-args
@@ -112,8 +119,8 @@
        "show help and exit"
        :flag true]
       ["-m" "--mode"
-       "Indicates how infosquito should be run. (passive|sync)"
-       :default "passive"])
+       "Indicates how infosquito should be run. (sync|worker)"
+       :default "worker"])
     (catch Exception e
       (ss/throw+ {:type :cli :msg (.getMessage e)}))))
 
@@ -124,27 +131,14 @@
     (let [[opts _ help-str] (parse-args args)]
       (if (:help opts)
         (println help-str)
-        (run (map-mode (:mode opts))
-             (if-let [cfg-file (:config opts)]
-               (get-local-props cfg-file)
-               (get-remote-props)))))
+        ((->mode (:mode opts)) (->config-loader (:config opts)))))
     (catch [:type :cli] {:keys [msg]}
       (log/error (str "There was a problem reading the command line input. ("
                       msg ") Exiting.")))
     (catch [:type :invalid-mode] {:keys [mode]}
       (log/error "Invalid mode, " mode))
-    (catch [:type :cfg-problem] {:keys [cfg-file]}
-      (log/error str("There was problem reading the configuration file "
-                      cfg-file ". Exiting.")))
-    (catch [:type :zk-perm] {:keys []}
-      (log/error "This application cannot run on this machine. Exiting."))
-    (catch [:type :connection-refused] {:keys [msg]}
-      (log/error (str "Cannot connect to Elastic Search. (" msg ") Exiting.")))
-    (catch [:type :connection] {:keys [msg]}
-      (log/error (str "An error occurred while communicating with the work queue. "
-                      "(" msg ") Exiting.")))
-    (catch [:type :beanstalkd-oom] {:keys []}
-      (log/error "An error occurred. beanstalkd is out of memory and is"
-                 "probably wedged. Exiting."))
+    (catch [:type :cfg-problem] {:keys [msg]}
+      (log/error (str "There was problem loading the configuration values. (" 
+                      msg ") Exiting.")))
     (catch Object _
       (log/error (:throwable &throw-context) "unexpected error"))))
