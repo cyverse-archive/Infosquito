@@ -90,7 +90,7 @@
     (let [props (update-props load-props old-props)]
       (trap-known-exceptions! 
         (dorun (repeatedly #(worker/process-next-task (mk-worker props)))))
-      (.wait props (props/get-retry-delay props))
+      (Thread/sleep (props/get-retry-delay props))
       (recur props))))
 
 
