@@ -113,16 +113,16 @@
   `(ss/try+
      (irods/with-jargon (:irods-cfg ~worker) ~irods-sym ~@body)
      (catch JargonException e#
-       (ss/throw+ {:type :connection-refused 
+       (ss/throw+ {:type :connection 
                    :msg  (str "Failed to connect to iRODS. " (.getMessage e#))}))
      (catch JargonRuntimeException e#
-       (ss/throw+ {:type :connection-refused 
+       (ss/throw+ {:type :connection 
                    :msg  (str "Lost connection to iRODS. " (.getMessage e#))}))))
   
 
 (defn- index-entry
   "Throws:
-     :connection-refused - This is thrown if it fails to connect to iRODS."
+     :connection - This is thrown if it fails to connect to iRODS."
   [worker path]
   (log/trace "indexing" path)
   (ss/try+
@@ -140,8 +140,7 @@
 
 (defn- index-members
   "Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it fails to connect to iRODS.
+     :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the work queue.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -189,8 +188,7 @@
 
 (defn- remove-missing-entries
   "Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it fails to connect to iRODS.
+     :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -221,8 +219,7 @@
 
 (defn- sync-with-repo
   "Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it fails to connect to iRODS.
+     :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -234,8 +231,7 @@
 
 (defn- dispatch-task
   "Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it fails to connect to iRODS.
+     :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
@@ -281,8 +277,7 @@
      worker - The worker performing the task.
 
    Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it fails to connect to iRODS.
+     :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs.
@@ -306,8 +301,7 @@
      worker - The worker performing the task.
 
    Throws:
-     :connection - This is thrown if it loses its connection to beanstalkd.
-     :connection-refused - This is thrown if it fails to connect to iRODS.
+     :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."

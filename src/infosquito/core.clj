@@ -23,7 +23,7 @@
      (catch [:type :connection-refused] {:keys [~'msg]}
        (log/error "connection failure." ~'msg))
      (catch [:type :connection] {:keys [~'msg]}
-       (log/error "An error occurred while communicating with Beanstalk." ~'msg))
+       (log/error "connection failure." ~'msg))
      (catch [:type :beanstalkd-oom] {:keys []}
        (log/error "An error occurred. beanstalkd is out of memory and is"
                   " probably wedged."))))
@@ -138,7 +138,7 @@
     (catch [:type :invalid-mode] {:keys [mode]}
       (log/error "Invalid mode, " mode))
     (catch [:type :cfg-problem] {:keys [msg]}
-      (log/error (str "There was problem loading the configuration values. (" 
+      (log/error (str "There was a problem loading the configuration values. (" 
                       msg ") Exiting.")))
     (catch Object _
       (log/error (:throwable &throw-context) "unexpected error"))))
