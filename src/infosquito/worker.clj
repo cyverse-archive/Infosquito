@@ -10,7 +10,8 @@
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es-if :as es])
   (:import [org.irods.jargon.core.exception FileNotFoundException
-                                            JargonException]))
+                                            JargonException
+                                            JargonRuntimeException]))
 
 
 (def ^{:private true} index "iplant")
@@ -113,7 +114,10 @@
      (irods/with-jargon (:irods-cfg ~worker) ~irods-sym ~@body)
      (catch JargonException e#
        (ss/throw+ {:type :connection-refused 
-                   :msg  (str "Failed to connect to iRODS. " (.getMessage e#))}))))
+                   :msg  (str "Failed to connect to iRODS. " (.getMessage e#))}))
+     (catch JargonRuntimeException e#
+       (ss/throw+ {:type :connection-refused 
+                   :msg  (str "Lost connection to iRODS. " (.getMessage e#))}))))
   
 
 (defn- index-entry
