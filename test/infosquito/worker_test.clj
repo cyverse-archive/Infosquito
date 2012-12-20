@@ -179,6 +179,13 @@
       (is (ss/try+
             (process-next-task worker)
             true
+            (catch Object _ false)))))
+  (testing "missing directory doesn't throw out"
+    (let [[queue-state-ref _ worker] (setup)]
+      (populate-queue queue-state-ref {:type "index members" :path "/unknown"})
+      (is (ss/try+
+            (process-next-task worker)
+            true
             (catch Object _ false))))))
 
 

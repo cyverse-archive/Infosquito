@@ -13,7 +13,7 @@
                  [org.irods.jargon/jargon-core "3.2.0"]
                  [slingshot "0.10.3"]
                  [org.iplantc/clj-jargon "0.2.2-SNAPSHOT"]
-                 [org.iplantc/clojure-commons "1.3.0-SNAPSHOT"]]
+                 [org.iplantc/clojure-commons "1.3.1-SNAPSHOT"]]
   :profiles {:dev {:dependencies   [[org.iplantc/boxy "0.1.0-SNAPSHOT"]]
                    :resource-paths ["dev-resources"]}}
   :plugins [[org.iplantc/lein-iplant-rpm "1.4.0-SNAPSHOT"]]

@@ -72,7 +72,7 @@
 
 
 (deftest test-get-retry-delay
-  (is (= 10 (get-retry-delay props))))
+  (is (= 10000 (get-retry-delay props))))
 
         
 (deftest test-validate
