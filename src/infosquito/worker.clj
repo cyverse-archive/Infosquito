@@ -205,6 +205,7 @@
               (if-not (:_scroll_id resp) 
                 (ss/throw+ {:type :index-scroll :resp resp}))
               (when (pos? (count (cerr/hits-from resp)))
+                ; TODO renew reservation
                 (doseq [path (remove #(irods/exists? irods %) 
                                      (cerr/ids-from resp))]
                   (queue/put (:queue worker) 
@@ -230,6 +231,7 @@
   [worker]
   (log/info "Synchronizing index with iRODS repository")
   (remove-missing-entries worker)
+  ; TODO renew reservation
   (index-members worker (:index-root worker)))
 
 
