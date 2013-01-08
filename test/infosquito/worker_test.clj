@@ -1,6 +1,5 @@
 (ns infosquito.worker-test
   (:use clojure.test
-        clojure-commons.infosquito.mock-beanstalk
         infosquito.worker
         infosquito.mock-es)
   (:require [clojure.data.json :as json]
@@ -8,6 +7,7 @@
             [boxy.core :as boxy]
             [clj-jargon.jargon :as irods]
             [infosquito.es-if :as es]
+            [clojure-commons.infosquito.mock-beanstalk :as beanstalk]
             [clojure-commons.infosquito.work-queue :as queue]))
 
 
@@ -70,7 +70,7 @@
 
 (defn- setup
   []
-  (let [queue-state (atom default-state)
+  (let [queue-state (atom beanstalk/default-state)
         es-repo     (atom {})
         proxy-ctor  #(boxy/mk-mock-proxy (atom init-irods-repo))]
     [queue-state 
@@ -83,7 +83,7 @@
                             "tempZone" 
                             "dr"
                             :proxy-ctor proxy-ctor)
-                (queue/mk-client #(mk-mock-beanstalk queue-state) 
+                (queue/mk-client #(beanstalk/mk-mock-beanstalk queue-state) 
                                  3 
                                  120 
                                  "infosquito")
@@ -97,8 +97,8 @@
   [queue-state-ref task]
   (swap! queue-state-ref 
          #(-> % 
-            (use-tube "infosquito")
-            (put-job 10 (json/json-str task))
+            (beanstalk/use-tube "infosquito")
+            (beanstalk/put-job 10 (json/json-str task))
             first)))
   
 
