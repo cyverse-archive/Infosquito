@@ -96,7 +96,10 @@
 (defn- populate-queue
   [queue-state-ref task]
   (swap! queue-state-ref 
-         #(assoc % :tubes {"infosquito" [{:id 0 :payload (json/json-str task)}]})))
+         #(-> % 
+            (use-tube "infosquito")
+            (put-job 10 (json/json-str task))
+            first)))
   
 
 (deftest test-index-entry
@@ -157,7 +160,7 @@
       (process-next-task worker)
       (is (empty? @es-repo-ref))
       (is (= (set (map #(json/read-json (:payload %)) 
-                       (get (:tubes @queue-state-ref) "infosquito"))) 
+                       (:ready (get (:tubes @queue-state-ref) "infosquito")))) 
              #{{:type "index entry"   
                 :path "/tempZone/home/user1/readable-file"}
                {:type "index entry"   
@@ -210,7 +213,7 @@
     (populate-queue queue-state-ref {:type "sync"})
     (process-next-task worker)
     (is (= (set (map #(json/read-json (:payload %)) 
-                (get (:tubes @queue-state-ref) "infosquito")))
+                (:ready (get (:tubes @queue-state-ref) "infosquito"))))
            #{{:type "remove entry"  :path "/tempZone/home/old-user"}
              {:type "index entry"   :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}
@@ -227,7 +230,7 @@
                                                             :user "user1"}}}})
     (sync-index worker)
     (is (= (set (map #(json/read-json (:payload %)) 
-                (get (:tubes @queue-state-ref) "infosquito")))
+                (:ready (get (:tubes @queue-state-ref) "infosquito"))))
            #{{:type "remove entry"  :path "/tempZone/home/old-user"}
              {:type "index entry"   :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}
