@@ -89,7 +89,7 @@
   (loop [old-props (Properties.)]
     (let [props (update-props load-props old-props)]
       (trap-known-exceptions! 
-        (dorun (repeatedly #(worker/process-next-task (mk-worker props)))))
+        (dorun (repeatedly #(worker/process-next-job (mk-worker props)))))
       (Thread/sleep (props/get-retry-delay props))
       (recur props))))
 

@@ -15,7 +15,7 @@
 
 (defn get-beanstalk-job-ttr
   [props]
-  (get-int-prop props "infosquito.beanstalk.task-ttr"))
+  (get-int-prop props "infosquito.beanstalk.job-ttr"))
 
   
 (defn get-beanstalk-port
@@ -101,7 +101,7 @@
                                 false)))     
         labels ["infosquito.beanstalk.host"
                 "infosquito.beanstalk.port"
-                "infosquito.beanstalk.task-ttr"
+                "infosquito.beanstalk.job-ttr"
                 "infosquito.beanstalk.tube"
                 "infosquito.es.host"
                 "infosquito.es.port"

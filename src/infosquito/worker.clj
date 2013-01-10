@@ -18,10 +18,10 @@
 (def ^{:private true} dir-type "folder")
 
 
-(def ^{:private true} index-entry-task "index entry")
-(def ^{:private true} index-members-task "index members")
-(def ^{:private true} remove-entry-task "remove entry")
-(def ^{:private true} sync-task "sync")
+(def ^{:private true} index-entry-job "index entry")
+(def ^{:private true} index-members-job "index members")
+(def ^{:private true} remove-entry-job "remove entry")
+(def ^{:private true} sync-job "sync")
 
 
 (defn- log-when-es-failed
@@ -31,7 +31,7 @@
   response) 
   
   
-(defn- mk-task
+(defn- mk-job
   [type path]
   {:type type :path path}) 
 
@@ -151,14 +151,14 @@
       (let [queue (:queue worker)]
         (with-irods worker [irods]
           (doseq [entry (get-members irods dir-path)]
-            (queue/put queue (json/json-str (mk-task index-entry-task entry)))
+            (queue/put queue (json/json-str (mk-job index-entry-job entry)))
             (when (and (irods/is-dir? irods entry)
                        (not (irods/is-linked-dir? irods entry)))
-              (queue/put queue (json/json-str (mk-task index-members-task entry)))))))
+              (queue/put queue (json/json-str (mk-job index-members-job entry)))))))
       (catch [:type :beanstalkd-oom] {:keys []}
         (log-stop-warn "beanstalkd is out of memory."))
       (catch [:type :beanstalkd-draining] {:keys []}
-        (log-stop-warn "beanstalkd is not accepting new tasks."))
+        (log-stop-warn "beanstalkd is not accepting new jobs."))
       (catch [:type :bad-dir-path] {:keys [msg]}
         (log-stop-warn msg))
       (catch [:type :missing-irods-entry] {:keys []}
@@ -209,7 +209,7 @@
                 (doseq [path (remove #(irods/exists? irods %) 
                                      (cerr/ids-from resp))]
                   (queue/put (:queue worker) 
-                             (json/json-str (mk-task remove-entry-task path))))
+                             (json/json-str (mk-job remove-entry-job path))))
                 (recur (:_scroll_id resp))))))))
     (catch [:type :index-scroll] {:keys [resp]}
       (log/error "Stopping removal of missing entries." resp))
@@ -218,7 +218,7 @@
                 "beanstalkd is out of memory."))
     (catch [:type :beanstalkd-draining] {:keys []}
       (log/warn "Stopping removal of missing entries."
-                "beanstalkd is not accepting new tasks."))))
+                "beanstalkd is not accepting new jobs."))))
 
 
 (defn- sync-with-repo
@@ -235,21 +235,21 @@
   (index-members worker (:index-root worker)))
 
 
-(defn- dispatch-task
+(defn- dispatch-job
   "Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
      :connection-refused - This is thrown if it fails to connect to iRODS.
      :internal-error - This is thrown if there is an error in the logic error 
        internal to the worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
-  [worker task]
-  (let [type (:type task)]
+  [worker job]
+  (let [type (:type job)]
     (condp = type
-      index-entry-task   (index-entry worker (:path task))
-      index-members-task (index-members worker (:path task))
-      remove-entry-task  (remove-entry worker (:path task))
-      sync-task          (sync-with-repo worker)
-                         (log/warn "ignoring unknown task" type))))
+      index-entry-job   (index-entry worker (:path job))
+      index-members-job (index-members worker (:path job))
+      remove-entry-job  (remove-entry worker (:path job))
+      sync-job          (sync-with-repo worker)
+                         (log/warn "ignoring unknown job" type))))
 
 
 (defn mk-worker
@@ -276,49 +276,48 @@
    :scroll-page-size scroll-page-size})
 
 
-(defn process-next-task
-  "Reads the next available task from the queue and performs it.  If there are
-   no tasks in the queue, it will wait for the next available task.
+(defn process-next-job
+  "Reads the next available job from the queue and performs it.  If there are no jobs in the queue, 
+   it will wait for the next available job.
 
    Parameters:
-     worker - The worker performing the task.
+     worker - The worker performing the job.
 
    Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
      :connection-refused - This is thrown if it fails to connect to iRODS.
-     :internal-error - This is thrown if there is an error in the logic error 
-       internal to the worker.
+     :internal-error - This is thrown if there is an error in the logic error internal to the 
+       worker.
      :unknown-error - This is thrown if an unidentifiable error occurs.
      :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
   [worker]
   (let [queue (:queue worker)]
     (queue/with-server queue
-      (when-let [task (queue/reserve queue)]
+      (when-let [job (queue/reserve queue)]
         (ss/try+
-          (dispatch-task worker (json/read-json (:payload task)))
-          (queue/delete queue (:id task))
+          (dispatch-job worker (json/read-json (:payload job)))
+          (queue/delete queue (:id job))
           (catch Object _
             (ss/try+ 
-              (queue/release queue (:id task))
+              (queue/release queue (:id job))
               (catch Object o))
             (ss/throw+)))))))
 
 
 (defn sync-index
-  "Synchronizes the search index with the iRODS repository.  It removes all
-   entries it finds in the index that are no longer in the repository, then it
-   reindexes all of the current entries in the repository.  This function
-   doesn't actually make changes to the index.  Instead it schedules tasks in
-   the work queue.
+  "Synchronizes the search index with the iRODS repository.  It removes all entries it finds in the 
+   index that are no longer in the repository, then it reindexes all of the current entries in the 
+   repository.  This function doesn't actually make changes to the index.  Instead it schedules jobs 
+   in the work queue.
 
    Parameters:
-     worker - The worker performing the task.
+     worker - The worker performing the job.
 
    Throws:
      :connection - This is thrown if it loses its connection to beanstalkd.
      :connection-refused - This is thrown if it fails to connect to iRODS.
-     :internal-error - This is thrown if there is an error in the logic error 
-       internal to the worker.
+     :internal-error - This is thrown if there is an error in the logic error internal to the 
+       worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker]
   (queue/with-server (:queue worker) (sync-with-repo worker)))
