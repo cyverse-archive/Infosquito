@@ -71,10 +71,10 @@
 (defn- setup
   []
   (let [queue-state (atom beanstalk/default-state)
-        es-repo     (atom {})
+        es-state    (atom (mk-indexer-state))
         proxy-ctor  #(boxy/mk-mock-proxy (atom init-irods-repo))]
     [queue-state 
-     es-repo 
+     es-state 
      (mk-worker (irods/init "localhost" 
                             "1297" 
                             "user" 
@@ -87,10 +87,15 @@
                                  3 
                                  120 
                                  "infosquito")
-                (mk-mock-indexer es-repo)
+                (->MockIndexer es-state)
                 "/tempZone/home"
                 "10m"
                 50)]))
+
+
+(defn- populate-es
+  [es-state-ref contents]
+  (swap! es-state-ref #(set-contents % contents)))
 
 
 (defn- populate-queue
@@ -100,42 +105,43 @@
             (beanstalk/use-tube "infosquito")
             (beanstalk/put-job 10 (json/json-str task))
             first)))
-  
+
+
+(defn- get-queued
+  [queue-state-ref]
+  (set (map #(-> % :payload json/read-json) (beanstalk/get-jobs @queue-state-ref "infosquito")))) 
+
 
 (deftest test-index-entry
   (testing "index readable file"
-    (let [[queue-state-ref es-repo-ref worker] (setup)]
+    (let [[queue-state-ref es-state-ref worker] (setup)]
       (populate-queue queue-state-ref 
-                      {:type "index entry" 
-                       :path "/tempZone/home/user1/readable-file"})
+                      {:type "index entry" :path "/tempZone/home/user1/readable-file"})
       (process-next-task worker)
-      (is (empty? (:queue @queue-state-ref)))
-      (is (= (get-in @es-repo-ref 
-                     ["iplant" "file" "/tempZone/home/user1/readable-file"])
+      (is (not (beanstalk/jobs? @queue-state-ref)))
+      (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/readable-file")
              {:name "readable-file" :viewers ["user1"]}))))
   (testing "index readable folder"
-    (let [[queue-state-ref es-repo-ref worker] (setup)]
-      (populate-queue queue-state-ref {:type "index entry" 
-                                       :path "/tempZone/home/user1/readable-dir"})
+    (let [[queue-state-ref es-state-ref worker] (setup)]
+      (populate-queue queue-state-ref 
+                      {:type "index entry" :path "/tempZone/home/user1/readable-dir"})
       (process-next-task worker)
-      (is (= (get-in @es-repo-ref 
-                     ["iplant" "folder" "/tempZone/home/user1/readable-dir"])
+      (is (= (get-doc @es-state-ref "iplant" "folder" "/tempZone/home/user1/readable-dir")
              {:name "readable-dir" :viewers ["user1"]}))))
   (testing "index unreadable entry"
-    (let [[queue-state-ref es-repo-ref worker] (setup)]    
+    (let [[queue-state-ref es-state-ref worker] (setup)]    
       (populate-queue queue-state-ref 
                       {:type "index entry" 
                        :path "/tempZone/home/user1/unreadable-file"})
       (process-next-task worker)
-      (is (= (get-in @es-repo-ref 
-                     ["iplant" "file" "/tempZone/home/user1/unreadable-file"])
+      (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/unreadable-file")
              {:name "unreadable-file" :viewers []}))))
   (testing "index multiple viewers"
-    (let [[queue-state-ref es-repo-ref worker] (setup)]    
+    (let [[queue-state-ref es-state-ref worker] (setup)]    
       (populate-queue queue-state-ref {:type "index entry" :path "/tempZone/home"})
       (process-next-task worker)
-      (is (= (->> ["iplant" "folder" "/tempZone/home"] 
-               (get-in @es-repo-ref) 
+      (is (= (-> @es-state-ref 
+               (get-doc "iplant" "folder" "/tempZone/home") 
                :viewers 
                set)
              #{"user1" "user2"}))))
@@ -143,42 +149,30 @@
     (let [[queue-state-ref _ worker] (setup)
           thrown?                    (ss/try+
                                        (populate-queue queue-state-ref 
-                                                       {:type "index entry" 
-                                                        :path "/missing"})
+                                                       {:type "index entry" :path "/missing"})
                                        (process-next-task worker)
                                        false
-                                       (catch Object _
-										  true))]
+                                       (catch Object _ true))]
       (is (not thrown?)))))
   
 
 (deftest test-index-members
   (testing "normal operation"
-    (let [[queue-state-ref es-repo-ref worker] (setup)]
-      (populate-queue queue-state-ref {:type "index members" 
-                                       :path "/tempZone/home/user1"})
+    (let [[queue-state-ref es-state-ref worker] (setup)]
+      (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user1"})
       (process-next-task worker)
-      (is (empty? @es-repo-ref))
-      (is (= (set (map #(json/read-json (:payload %)) 
-                       (:ready (get (:tubes @queue-state-ref) "infosquito")))) 
-             #{{:type "index entry"   
-                :path "/tempZone/home/user1/readable-file"}
-               {:type "index entry"   
-                :path "/tempZone/home/user1/unreadable-file"}
-               {:type "index entry"   
-                :path "/tempZone/home/user1/readable-dir/"}
-               {:type "index members" 
-                :path "/tempZone/home/user1/readable-dir/"}
-               {:type "index entry"   
-                :path "/tempZone/home/user1/unreadable-dir/"}
-               {:type "index members" 
-                :path "/tempZone/home/user1/unreadable-dir/"}
-               {:type "index entry"   
-                :path "/tempZone/home/user1/linked-dir/"}}))))
+      (is (not (has-index? @es-state-ref "iplant")))
+      (is (= (get-queued queue-state-ref)
+             #{{:type "index entry" :path "/tempZone/home/user1/readable-file"}
+               {:type "index entry" :path "/tempZone/home/user1/unreadable-file"}
+               {:type "index entry" :path "/tempZone/home/user1/readable-dir/"}
+               {:type "index members" :path "/tempZone/home/user1/readable-dir/"}
+               {:type "index entry" :path "/tempZone/home/user1/unreadable-dir/"}
+               {:type "index members" :path "/tempZone/home/user1/unreadable-dir/"}
+               {:type "index entry" :path "/tempZone/home/user1/linked-dir/"}}))))
   (testing "dir name too long doesn't throw out"
     (let [[queue-state-ref _ worker] (setup)]
-      (populate-queue queue-state-ref {:type "index members"
-                                       :path "/tempZone/home/user2/trash"})
+      (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user2/trash"})
       (is (ss/try+
             (process-next-task worker)
             true
@@ -193,46 +187,47 @@
 
 
 (deftest test-remove-entry
-  (let [[queue-state-ref es-repo-ref worker] (setup)]
-    (reset! es-repo-ref 
-            {"iplant" {"file" {"/tempZone/home/user1/old-file" {:name "old-file" 
-                                                                :user "user1"}}}})
-    (populate-queue queue-state-ref 
-                    {:type "remove entry" :path "/tempZone/home/user1/old-file"})
+  (let [path                                  "/tempZone/home/user1/old-file"
+        [queue-state-ref es-state-ref worker] (setup)]
+    (populate-es es-state-ref {"iplant" {"file" {path {:name "old-file" :user "user1"}}}})
+    (populate-queue queue-state-ref {:type "remove entry" :path path})
     (process-next-task worker)
-    (is (= @es-repo-ref {"iplant" {"file" {}}}))))
+    (is (not (indexed? @es-state-ref "iplant" "file" path)))))
 
 
+(deftest test-release-on-fail
+  (let [path                                  "/tempZone/home/user1/old-file"
+        [queue-state-ref es-state-ref worker] (setup)]
+    (populate-es es-state-ref {"iplant" {"file" {path {:name "old-file" :user "user1"}}}})
+    (populate-queue queue-state-ref {:type "remove entry" :path "/tempZone/home/user1/old-file"})
+    (process-next-task worker)
+    (is (not (indexed? @es-state-ref "iplant" "file" path)))))
+  
+  
 (deftest test-sync
-  (let [[queue-state-ref es-repo-ref worker] (setup)]
-    (reset! es-repo-ref 
-            {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" 
-                                                            :user "old-user"}
-                                 "/tempZone/home/user1"    {:name "user1"
-                                                            :user "user1"}}}})
+  (let [[queue-state-ref es-state-ref worker] (setup)]
+    (populate-es es-state-ref 
+                 {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
+                                      "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
     (populate-queue queue-state-ref {:type "sync"})
     (process-next-task worker)
-    (is (= (set (map #(json/read-json (:payload %)) 
-                (:ready (get (:tubes @queue-state-ref) "infosquito"))))
-           #{{:type "remove entry"  :path "/tempZone/home/old-user"}
-             {:type "index entry"   :path "/tempZone/home/user1/"}
+    (is (= (get-queued queue-state-ref)
+           #{{:type "remove entry" :path "/tempZone/home/old-user"}
+             {:type "index entry" :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}
-             {:type "index entry"   :path "/tempZone/home/user2/"}
+             {:type "index entry" :path "/tempZone/home/user2/"}
              {:type "index members" :path "/tempZone/home/user2/"}}))))
 
 
 (deftest test-sync-index
-  (let [[queue-state-ref es-repo-ref worker] (setup)]
-    (reset! es-repo-ref 
-            {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" 
-                                                            :user "old-user"}
-                                 "/tempZone/home/user1"    {:name "user1"
-                                                            :user "user1"}}}})
+  (let [[queue-state-ref es-state-ref worker] (setup)]
+    (populate-es es-state-ref 
+                 {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
+                                      "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
     (sync-index worker)
-    (is (= (set (map #(json/read-json (:payload %)) 
-                (:ready (get (:tubes @queue-state-ref) "infosquito"))))
-           #{{:type "remove entry"  :path "/tempZone/home/old-user"}
-             {:type "index entry"   :path "/tempZone/home/user1/"}
+    (is (= (get-queued queue-state-ref)
+           #{{:type "remove entry" :path "/tempZone/home/old-user"}
+             {:type "index entry" :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}
-             {:type "index entry"   :path "/tempZone/home/user2/"}
+             {:type "index entry" :path "/tempZone/home/user2/"}
              {:type "index members" :path "/tempZone/home/user2/"}}))))

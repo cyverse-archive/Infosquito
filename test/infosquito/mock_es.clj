@@ -13,72 +13,110 @@
             [slingshot.slingshot :as ss]))
 
 
+(defn- ensure-not-fail
+  [state]
+  (when (:fail? state) (ss/throw+ {:type :forced-fail})))
+  
+  
 (defn- index-doc
-  [repo index type id doc]
-  (assoc-in repo [index type id] doc))
+  [state index type id doc]
+  (assoc-in state [:repo index type id] doc))
 
 
 (defn- index-exists?
-  [repo index]
-  (contains? repo index))
+  [state index]
+  (contains? (:repo state) index))
 
     
 (defn- remove-doc
-  [repo index type id]
-  (let [idx-map (get repo index)]
-    (if-let [type-map (get idx-map type)]
-      (->> id (dissoc type-map) (assoc idx-map type) (assoc repo index))
-      repo)))
+  [state index type id]
+  (if-let [type-map (get-in state [:repo index type])]
+    (assoc-in state [:repo index type] (dissoc type-map id))
+    state))
   
 
 (defn- search-index
-  [repo index params]
+  [state index params]
   (let [search-type (:search_type params)
         query       (:query params)]
     (when (not= search-type "scan")
       (ss/throw+ {:type :unsuported-search-type :search-type search-type}))
     (when (not= query (ceq/match-all))
       (ss/throw+ {:type :unsupported-query :query query}))
-    (let [hits   (if-let [idx-map (get repo index)]
+    (let [hits   (if-let [idx-map (get-in state [:repo index])]
                    (map (fn [kv] {:_id (key kv)}) (apply merge (vals idx-map)))
                    [])
           scroll {:total-hits (count hits) :hits hits}]
-      [scroll
+      [(assoc state :scroll scroll)
        {:_scroll_id (str scroll)}])))
 
     
 (defn- advance-scroll
-  [scroll]
-  (let [scroll' (assoc scroll :hits [])]
-    [scroll' {:hits       {:hits (:hits scroll) :total (:total-hits scroll)}
-              :_scroll_id (str scroll')}]))
+  [state]
+  (let [scroll  (:scroll state)
+        scroll' (assoc scroll :hits [])]
+    [(assoc state :scroll scroll') 
+     {:hits       {:hits (:hits scroll) :total (:total-hits scroll)}
+      :_scroll_id (str scroll')}]))
 
 
-(defrecord ^{:private true} MockIndexer [repo-ref scroll-ref]
+(defn mk-indexer-state
+  []
+  {:fail?  false
+   :repo   {}
+   :scroll {:hits [] :total-hits 0}})
+
+ 
+(defn set-contents
+  [state contents]
+  (assoc state :repo contents))
+
+
+(defn get-doc
+  [state index type id]
+  (get-in state [:repo index type id]))
+
+    
+(defn has-index?
+  [state index]
+  (boolean (get-in state [:repo index])))
+
+  
+(defn indexed? 
+  [state index type id]
+  (boolean (get-doc state index type id)))
+
+
+(defn fail-ops
+  [state fail?]
+  (assoc state :fail? fail?))
+
+  
+(defrecord MockIndexer [state-ref]
   Indexes
   
   (delete [_ index type id]
-    (swap! repo-ref remove-doc index type id)
+    (ensure-not-fail @state-ref)
+    (swap! state-ref remove-doc index type id)
     {:ok true})
 
   (exists? [_ index]
-    (index-exists? @repo-ref index))
+    (ensure-not-fail @state-ref)
+    (index-exists? @state-ref index))
   
   (put [_ index type id doc-map]
-    (swap! repo-ref index-doc index type id doc-map)
+    (ensure-not-fail @state-ref)
+    (swap! state-ref index-doc index type id doc-map)
     {:ok true})
 
   (scroll [_ scroll-id keep-alive-time]
-    (let [[scroll' resp] (advance-scroll @scroll-ref)]
-      (reset! scroll-ref scroll')
+    (ensure-not-fail @state-ref)
+    (let [[state' resp] (advance-scroll @state-ref)]
+      (reset! state-ref state')
       resp))
   
   (search-all-types [_ index params]
-    (let [[scroll' resp] (search-index @repo-ref index params)] 
-      (reset! scroll-ref scroll')
+    (ensure-not-fail @state-ref)
+    (let [[state' resp] (search-index @state-ref index params)] 
+      (reset! state-ref state')
       resp)))
-
-
-(defn mk-mock-indexer
-  [repo-ref]
-  (->MockIndexer repo-ref (atom {:hits [] :total-hits 0})))

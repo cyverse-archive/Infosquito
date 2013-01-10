@@ -293,9 +293,15 @@
   [worker]
   (let [queue (:queue worker)]
     (queue/with-server queue
-      (when-let [task (queue/reserve queue)]  
-        (dispatch-task worker (json/read-json (:payload task)))
-        (queue/delete queue (:id task))))))
+      (when-let [task (queue/reserve queue)]
+        (ss/try+
+          (dispatch-task worker (json/read-json (:payload task)))
+          (queue/delete queue (:id task))
+          (catch Object _
+            (ss/try+ 
+              (queue/release queue (:id task))
+              (catch Object o))
+            (ss/throw+)))))))
 
 
 (defn sync-index
