@@ -112,6 +112,23 @@
   (set (map #(-> % :payload json/read-json) (beanstalk/get-jobs @queue-state-ref "infosquito")))) 
 
 
+(deftest test-release-on-fail
+  (let [job                                   {:type "index entry" 
+                                               :path "/tempZone/home/user1/readable-file"}
+        [queue-state-ref es-state-ref worker] (setup)]
+    (populate-queue queue-state-ref job)
+    (swap! es-state-ref #(fail-ops % true))
+    (ss/try+
+      (process-next-task worker)
+      (catch Object _))
+    (is (= job
+           (-> @queue-state-ref 
+             (beanstalk/peek-ready "infosquito") 
+             :payload 
+             json/read-json)))
+    (is (= (not (has-index? @es-state-ref "iplant"))))))
+
+  
 (deftest test-index-entry
   (testing "index readable file"
     (let [[queue-state-ref es-state-ref worker] (setup)]
@@ -195,15 +212,6 @@
     (is (not (indexed? @es-state-ref "iplant" "file" path)))))
 
 
-(deftest test-release-on-fail
-  (let [path                                  "/tempZone/home/user1/old-file"
-        [queue-state-ref es-state-ref worker] (setup)]
-    (populate-es es-state-ref {"iplant" {"file" {path {:name "old-file" :user "user1"}}}})
-    (populate-queue queue-state-ref {:type "remove entry" :path "/tempZone/home/user1/old-file"})
-    (process-next-task worker)
-    (is (not (indexed? @es-state-ref "iplant" "file" path)))))
-  
-  
 (deftest test-sync
   (let [[queue-state-ref es-state-ref worker] (setup)]
     (populate-es es-state-ref 
@@ -216,9 +224,9 @@
              {:type "index entry" :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}
              {:type "index entry" :path "/tempZone/home/user2/"}
-             {:type "index members" :path "/tempZone/home/user2/"}}))))
-
-
+             {:type "index members" :path "/tempZone/home/user2/"}})))) 
+  
+  
 (deftest test-sync-index
   (let [[queue-state-ref es-state-ref worker] (setup)]
     (populate-es es-state-ref 
