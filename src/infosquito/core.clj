@@ -53,8 +53,8 @@
                                             (props/get-beanstalk-port props)))]
     (queue/mk-client ctor
                      1
-                     (props/get-beanstalk-job-ttr props)
-                     (props/get-beanstalk-tube props))))
+                     (props/get-job-ttr props)
+                     (props/get-work-tube props))))
 
 
 (defn- mk-worker

@@ -13,9 +13,9 @@
   (get props "infosquito.beanstalk.host"))
   
 
-(defn get-beanstalk-job-ttr
+(defn get-job-ttr
   [props]
-  (get-int-prop props "infosquito.beanstalk.job-ttr"))
+  (get-int-prop props "infosquito.job-ttr"))
 
   
 (defn get-beanstalk-port
@@ -23,9 +23,9 @@
   (get-int-prop props "infosquito.beanstalk.port"))
   
 
-(defn get-beanstalk-tube
+(defn get-work-tube
   [props]
-  (get props "infosquito.beanstalk.tube"))
+  (get props "infosquito.work-tube"))
   
 
 (defn get-es-scroll-page-size
@@ -101,8 +101,6 @@
                                 false)))     
         labels ["infosquito.beanstalk.host"
                 "infosquito.beanstalk.port"
-                "infosquito.beanstalk.job-ttr"
-                "infosquito.beanstalk.tube"
                 "infosquito.es.host"
                 "infosquito.es.port"
                 "infosquito.es.scroll-ttl"
@@ -115,5 +113,7 @@
                 "infosquito.irods.zone"
                 "infosquito.irods.default-resource"
                 "infosquito.irods.index-root"
+                "infosquito.job-ttr"
+                "infosquito.work-tube"
                 "infosquito.retry-delay"]]
     (every? exists? labels)))

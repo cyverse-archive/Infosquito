@@ -14,16 +14,16 @@
   (is (= "localhost" (get-beanstalk-host props))))
 
 
-(deftest test-get-beanstalk-job-ttr
-  (is (= 120 (get-beanstalk-job-ttr props))))
+(deftest test-get-job-ttr
+  (is (= 120 (get-job-ttr props))))
 
 
 (deftest test-get-beanstalk-port
   (is (= 11300 (get-beanstalk-port props))))
 
 
-(deftest test-get-beanstalk-tube
-  (is (= "infosquito" (get-beanstalk-tube props))))
+(deftest test-get-work-tube
+  (is (= "infosquito" (get-work-tube props))))
 
 
 (deftest test-get-es-scroll-page-size
