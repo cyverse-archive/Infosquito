@@ -16,17 +16,18 @@
            [java.util Properties]))
 
 
-(defmacro ^{:private true} trap-known-exceptions!
+(defmacro ^{:private true} trap-exceptions!
   [& body]
   `(ss/try+
      (do ~@body)
      (catch [:type :connection-refused] {:keys [~'msg]}
        (log/error "connection failure." ~'msg))
-     (catch [:type :connection] {:keys [~'msg]}
-       (log/error "An error occurred while communicating with Beanstalk." ~'msg))
+     (catch [:type :connection] {:keys [~'msg]} 
+       (log/error "connection failure." ~'msg))
      (catch [:type :beanstalkd-oom] {:keys []}
        (log/error "An error occurred. beanstalkd is out of memory and is"
-                  " probably wedged."))))
+                  " probably wedged."))
+     (catch Object o# (log/error (:throwable ~'&throw-context) "unexpected error"))))
   
 
 (defn- ->config-loader
@@ -88,7 +89,7 @@
   [load-props]
   (loop [old-props (Properties.)]
     (let [props (update-props load-props old-props)]
-      (trap-known-exceptions! 
+      (trap-exceptions! 
         (dorun (repeatedly #(worker/process-next-job (mk-worker props)))))
       (Thread/sleep (props/get-retry-delay props))
       (recur props))))
@@ -96,7 +97,7 @@
 
 (defn- sync-index
   [load-props]
-  (trap-known-exceptions!
+  (trap-exceptions!
     (let [worker (mk-worker (update-props load-props (Properties.)))]
       (worker/sync-index worker))))
   
@@ -138,7 +139,7 @@
     (catch [:type :invalid-mode] {:keys [mode]}
       (log/error "Invalid mode, " mode))
     (catch [:type :cfg-problem] {:keys [msg]}
-      (log/error (str "There was problem loading the configuration values. (" 
+      (log/error (str "There was a problem loading the configuration values. (" 
                       msg ") Exiting.")))
     (catch Object _
       (log/error (:throwable &throw-context) "unexpected error"))))

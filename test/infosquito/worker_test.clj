@@ -178,15 +178,10 @@
     (let [[queue-state-ref es-state-ref worker] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user1"})
       (process-next-job worker)
-      (is (not (has-index? @es-state-ref "iplant")))
+      (is (has-index? @es-state-ref "iplant"))
       (is (= (get-queued queue-state-ref)
-             #{{:type "index entry" :path "/tempZone/home/user1/readable-file"}
-               {:type "index entry" :path "/tempZone/home/user1/unreadable-file"}
-               {:type "index entry" :path "/tempZone/home/user1/readable-dir/"}
-               {:type "index members" :path "/tempZone/home/user1/readable-dir/"}
-               {:type "index entry" :path "/tempZone/home/user1/unreadable-dir/"}
-               {:type "index members" :path "/tempZone/home/user1/unreadable-dir/"}
-               {:type "index entry" :path "/tempZone/home/user1/linked-dir/"}}))))
+             #{{:type "index members" :path "/tempZone/home/user1/readable-dir/"}
+               {:type "index members" :path "/tempZone/home/user1/unreadable-dir/"}}))))
   (testing "dir name too long doesn't throw out"
     (let [[queue-state-ref _ worker] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user2/trash"})
@@ -221,9 +216,7 @@
     (process-next-job worker)
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
-             {:type "index entry" :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}
-             {:type "index entry" :path "/tempZone/home/user2/"}
              {:type "index members" :path "/tempZone/home/user2/"}})))) 
   
   
@@ -235,7 +228,5 @@
     (sync-index worker)
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
-             {:type "index entry" :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user1/"}
-             {:type "index entry" :path "/tempZone/home/user2/"}
              {:type "index members" :path "/tempZone/home/user2/"}}))))
