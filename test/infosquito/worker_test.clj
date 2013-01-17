@@ -98,6 +98,11 @@
   (swap! es-state-ref #(set-contents % contents)))
 
 
+(defn- with-beanstalk
+  [op worker]
+  (queue/with-server (:queue worker) (op worker)))
+
+
 (defn- populate-queue
   [queue-state-ref job]
   (swap! queue-state-ref 
@@ -119,7 +124,7 @@
     (populate-queue queue-state-ref job)
     (swap! es-state-ref #(fail-ops % true))
     (ss/try+
-      (process-next-job worker)
+      (with-beanstalk process-next-job worker)
       (catch Object _))
     (is (= job
            (-> @queue-state-ref 
@@ -134,7 +139,7 @@
     (let [[queue-state-ref es-state-ref worker] (setup)]
       (populate-queue queue-state-ref 
                       {:type "index entry" :path "/tempZone/home/user1/readable-file"})
-      (process-next-job worker)
+      (with-beanstalk process-next-job worker)
       (is (not (beanstalk/jobs? @queue-state-ref)))
       (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/readable-file")
              {:name "readable-file" :viewers ["user1"]}))))
@@ -142,7 +147,7 @@
     (let [[queue-state-ref es-state-ref worker] (setup)]
       (populate-queue queue-state-ref 
                       {:type "index entry" :path "/tempZone/home/user1/readable-dir"})
-      (process-next-job worker)
+      (with-beanstalk process-next-job worker)
       (is (= (get-doc @es-state-ref "iplant" "folder" "/tempZone/home/user1/readable-dir")
              {:name "readable-dir" :viewers ["user1"]}))))
   (testing "index unreadable entry"
@@ -150,13 +155,13 @@
       (populate-queue queue-state-ref 
                       {:type "index entry" 
                        :path "/tempZone/home/user1/unreadable-file"})
-      (process-next-job worker)
+      (with-beanstalk process-next-job worker)
       (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/unreadable-file")
              {:name "unreadable-file" :viewers []}))))
   (testing "index multiple viewers"
     (let [[queue-state-ref es-state-ref worker] (setup)]    
       (populate-queue queue-state-ref {:type "index entry" :path "/tempZone/home"})
-      (process-next-job worker)
+      (with-beanstalk process-next-job worker)
       (is (= (-> @es-state-ref 
                (get-doc "iplant" "folder" "/tempZone/home") 
                :viewers 
@@ -167,7 +172,7 @@
           thrown?                    (ss/try+
                                        (populate-queue queue-state-ref 
                                                        {:type "index entry" :path "/missing"})
-                                       (process-next-job worker)
+                                       (with-beanstalk process-next-job worker)
                                        false
                                        (catch Object _ true))]
       (is (not thrown?)))))
@@ -177,7 +182,7 @@
   (testing "normal operation"
     (let [[queue-state-ref es-state-ref worker] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user1"})
-      (process-next-job worker)
+      (with-beanstalk process-next-job worker)
       (is (has-index? @es-state-ref "iplant"))
       (is (= (get-queued queue-state-ref)
              #{{:type "index members" :path "/tempZone/home/user1/readable-dir/"}
@@ -186,14 +191,14 @@
     (let [[queue-state-ref _ worker] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user2/trash"})
       (is (ss/try+
-            (process-next-job worker)
+            (with-beanstalk process-next-job worker)
             true
             (catch Object _ false)))))
   (testing "missing directory doesn't throw out"
     (let [[queue-state-ref _ worker] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/unknown"})
       (is (ss/try+
-            (process-next-job worker)
+            (with-beanstalk process-next-job worker)
             true
             (catch Object _ false))))))
 
@@ -203,7 +208,7 @@
         [queue-state-ref es-state-ref worker] (setup)]
     (populate-es es-state-ref {"iplant" {"file" {path {:name "old-file" :user "user1"}}}})
     (populate-queue queue-state-ref {:type "remove entry" :path path})
-    (process-next-job worker)
+    (with-beanstalk process-next-job worker)
     (is (not (indexed? @es-state-ref "iplant" "file" path)))))
 
 
@@ -213,7 +218,7 @@
                  {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
                                       "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
     (populate-queue queue-state-ref {:type "sync"})
-    (process-next-job worker)
+    (with-beanstalk process-next-job worker) 
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
              {:type "index members" :path "/tempZone/home/user1/"}
@@ -225,7 +230,7 @@
     (populate-es es-state-ref 
                  {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
                                       "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
-    (sync-index worker)
+    (with-beanstalk sync-index worker)
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
              {:type "index members" :path "/tempZone/home/user1/"}

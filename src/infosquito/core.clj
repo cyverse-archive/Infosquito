@@ -89,8 +89,10 @@
   [load-props]
   (loop [old-props (Properties.)]
     (let [props (update-props load-props old-props)]
-      (trap-exceptions! 
-        (dorun (repeatedly #(worker/process-next-job (mk-worker props)))))
+      (trap-exceptions!
+        (let [worker (mk-worker props)]
+          (queue/with-server (:queue worker)
+            (dorun (repeatedly #(worker/process-next-job worker))))))
       (Thread/sleep (props/get-retry-delay props))
       (recur props))))
 
@@ -99,7 +101,7 @@
   [load-props]
   (trap-exceptions!
     (let [worker (mk-worker (update-props load-props (Properties.)))]
-      (worker/sync-index worker))))
+      (queue/with-server (:queue worker) (worker/sync-index worker)))))
   
 
 (defn- ->mode

@@ -128,7 +128,7 @@
   ([worker path]
       (with-irods worker [irods] (index-entry worker irods path (get-mapping-type irods path))))
   ([worker irods path type]
-    (log/trace "indexing" path)
+    #_(log/trace "indexing" path)
     (ss/try+
       (log-when-es-failed "index entry"
                           (es/put (:indexer worker) 
@@ -147,7 +147,7 @@
        internal to the work queue.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker dir-path]
-  (log/trace "indexing the members of" dir-path)
+  #_(log/trace "indexing the members of" dir-path)
   (letfn [(log-stop-warn [reason] (log/warn (str "Stopping indexing members of " 
                                                  dir-path ". " reason)))]
     (ss/try+ 
@@ -172,7 +172,7 @@
   
 (defn- remove-entry
   [worker path]
-  (log/trace "removing" path)
+  #_(log/trace "removing" path)
   (let [indexer (:indexer worker)
         id      (mk-index-id path)]
     (log-when-es-failed "remove entry" (es/delete indexer index file-type id))
@@ -224,11 +224,19 @@
                 "beanstalkd is not accepting new jobs."))))
 
 
-(defn- sync-with-repo
-  "Throws:
+(defn sync-index
+  "Synchronizes the search index with the iRODS repository.  It removes all entries it finds in the 
+   index that are no longer in the repository, then it reindexes all of the current entries in the 
+   repository.  This function doesn't actually make changes to the index.  Instead it schedules jobs 
+   in the work queue.
+
+   Parameters:
+     worker - The worker performing the job.
+
+   Throws:
      :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error 
-       internal to the worker.
+     :internal-error - This is thrown if there is an error in the logic error internal to the 
+       worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker]
   (log/info "Synchronizing index with iRODS repository")
@@ -249,8 +257,8 @@
       index-entry-job   (index-entry worker (:path job))
       index-members-job (index-members worker (:path job))
       remove-entry-job  (remove-entry worker (:path job))
-      sync-job          (sync-with-repo worker)
-                         (log/warn "ignoring unknown job" type))))
+      sync-job          (sync-index worker)
+                        (log/warn "ignoring unknown job" type))))
 
 
 (defn mk-worker
@@ -292,32 +300,12 @@
      :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
   [worker]
   (let [queue (:queue worker)]
-    (queue/with-server queue
-      (when-let [job (queue/reserve queue)]
-        (ss/try+
-          (dispatch-job worker (json/read-json (:payload job)))
-          (queue/delete queue (:id job))
-          (catch Object _
-            (ss/try+ 
-              (queue/release queue (:id job))
-              (catch Object o))
-            (ss/throw+)))))))
-
-
-(defn sync-index
-  "Synchronizes the search index with the iRODS repository.  It removes all entries it finds in the 
-   index that are no longer in the repository, then it reindexes all of the current entries in the 
-   repository.  This function doesn't actually make changes to the index.  Instead it schedules jobs 
-   in the work queue.
-
-   Parameters:
-     worker - The worker performing the job.
-
-   Throws:
-     :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error internal to the 
-       worker.
-     :unknown-error - This is thrown if an unidentifiable error occurs."
-  [worker]
-  (queue/with-server (:queue worker) (sync-with-repo worker)))
-
+    (when-let [job (queue/reserve queue)]
+      (ss/try+
+        (dispatch-job worker (json/read-json (:payload job)))
+        (queue/delete queue (:id job))
+        (catch Object _
+          (ss/try+ 
+            (queue/release queue (:id job))
+            (catch Object o))
+          (ss/throw+))))))
