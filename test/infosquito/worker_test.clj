@@ -6,9 +6,10 @@
             [slingshot.slingshot :as ss]
             [boxy.core :as boxy]
             [clj-jargon.jargon :as irods]
-            [infosquito.es-if :as es]
             [clojure-commons.infosquito.mock-beanstalk :as beanstalk]
-            [clojure-commons.infosquito.work-queue :as queue]))
+            [clojure-commons.infosquito.work-queue :as queue]
+            [infosquito.es-if :as es]
+            [infosquito.irods-facade :as irods-wrapper]))
 
 
 (def ^{:private true} too-long-dir-name 
@@ -68,39 +69,36 @@
                                                         :avus {}}})
 
 
-(defn- setup
-  []
-  (let [queue-state (atom beanstalk/default-state)
-        es-state    (atom (mk-indexer-state))
-        proxy-ctor  #(boxy/mk-mock-proxy (atom init-irods-repo))]
-    [queue-state 
-     es-state 
-     (mk-worker (irods/init "localhost" 
-                            "1297" 
-                            "user" 
-                            "/tempZone/home/rods" 
-                            "rods" 
-                            "tempZone" 
-                            "dr"
-                            :proxy-ctor proxy-ctor)
-                (queue/mk-client #(beanstalk/mk-mock-beanstalk queue-state) 
-                                 3 
-                                 120 
-                                 "infosquito")
-                (->MockIndexer es-state)
-                "/tempZone/home"
-                "10m"
-                50)]))
-
-
 (defn- populate-es
   [es-state-ref contents]
   (swap! es-state-ref #(set-contents % contents)))
 
 
-(defn- with-beanstalk
-  [op worker]
-  (queue/with-server (:queue worker) (op worker)))
+(defn- perform-op
+  [queue-state-ref es-state-ref op]
+  (let [proxy-ctor #(boxy/mk-mock-proxy (atom init-irods-repo))
+        irods-cfg  (irods/init "localhost" 
+                                "1297" 
+                                "user" 
+                                "/tempZone/home/rods" 
+                                "rods" 
+                                "tempZone" 
+                                "dr"
+                                :proxy-ctor proxy-ctor)
+        queue      (queue/mk-client #(beanstalk/mk-mock-beanstalk queue-state-ref) 
+                                    3 
+                                    120 
+                                    "infosquito")]
+    (queue/with-server queue
+      (irods-wrapper/with-irods irods-cfg [irods] 
+        (op (mk-worker queue irods (->MockIndexer es-state-ref) "/tempZone/home" "10m" 50))))))
+
+
+(defn- setup
+  []
+  (let [queue-state (atom beanstalk/default-state) 
+        es-state    (atom (mk-indexer-state))]
+    [queue-state es-state (partial perform-op queue-state es-state)]))
 
 
 (defn- populate-queue
@@ -118,13 +116,13 @@
 
 
 (deftest test-release-on-fail
-  (let [job                                   {:type "index entry" 
-                                               :path "/tempZone/home/user1/readable-file"}
-        [queue-state-ref es-state-ref worker] (setup)]
+  (let [job                                 {:type "index entry" 
+                                             :path "/tempZone/home/user1/readable-file"}
+        [queue-state-ref es-state-ref call] (setup)]
     (populate-queue queue-state-ref job)
     (swap! es-state-ref #(fail-ops % true))
     (ss/try+
-      (with-beanstalk process-next-job worker)
+      (call process-next-job)
       (catch Object _))
     (is (= job
            (-> @queue-state-ref 
@@ -136,89 +134,89 @@
   
 (deftest test-index-entry
   (testing "index readable file"
-    (let [[queue-state-ref es-state-ref worker] (setup)]
+    (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref 
                       {:type "index entry" :path "/tempZone/home/user1/readable-file"})
-      (with-beanstalk process-next-job worker)
+      (call process-next-job)
       (is (not (beanstalk/jobs? @queue-state-ref)))
       (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/readable-file")
              {:name "readable-file" :viewers ["user1"]}))))
   (testing "index readable folder"
-    (let [[queue-state-ref es-state-ref worker] (setup)]
+    (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref 
                       {:type "index entry" :path "/tempZone/home/user1/readable-dir"})
-      (with-beanstalk process-next-job worker)
+      (call process-next-job)
       (is (= (get-doc @es-state-ref "iplant" "folder" "/tempZone/home/user1/readable-dir")
              {:name "readable-dir" :viewers ["user1"]}))))
   (testing "index unreadable entry"
-    (let [[queue-state-ref es-state-ref worker] (setup)]    
+    (let [[queue-state-ref es-state-ref call] (setup)]    
       (populate-queue queue-state-ref 
                       {:type "index entry" 
                        :path "/tempZone/home/user1/unreadable-file"})
-      (with-beanstalk process-next-job worker)
+      (call process-next-job)
       (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/unreadable-file")
              {:name "unreadable-file" :viewers []}))))
   (testing "index multiple viewers"
-    (let [[queue-state-ref es-state-ref worker] (setup)]    
+    (let [[queue-state-ref es-state-ref call] (setup)]    
       (populate-queue queue-state-ref {:type "index entry" :path "/tempZone/home"})
-      (with-beanstalk process-next-job worker)
+      (call process-next-job)
       (is (= (-> @es-state-ref 
                (get-doc "iplant" "folder" "/tempZone/home") 
                :viewers 
                set)
              #{"user1" "user2"}))))
   (testing "missing entry"
-    (let [[queue-state-ref _ worker] (setup)
-          thrown?                    (ss/try+
-                                       (populate-queue queue-state-ref 
-                                                       {:type "index entry" :path "/missing"})
-                                       (with-beanstalk process-next-job worker)
-                                       false
-                                       (catch Object _ true))]
+    (let [[queue-state-ref _ call] (setup)
+          thrown?                  (ss/try+
+                                     (populate-queue queue-state-ref 
+                                                     {:type "index entry" :path "/missing"})
+                                     (call process-next-job)
+                                     false
+                                     (catch Object _ true))]
       (is (not thrown?)))))
   
 
 (deftest test-index-members
   (testing "normal operation"
-    (let [[queue-state-ref es-state-ref worker] (setup)]
+    (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user1"})
-      (with-beanstalk process-next-job worker)
+      (call process-next-job)
       (is (has-index? @es-state-ref "iplant"))
       (is (= (get-queued queue-state-ref)
              #{{:type "index members" :path "/tempZone/home/user1/readable-dir/"}
                {:type "index members" :path "/tempZone/home/user1/unreadable-dir/"}}))))
   (testing "dir name too long doesn't throw out"
-    (let [[queue-state-ref _ worker] (setup)]
+    (let [[queue-state-ref _ call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user2/trash"})
       (is (ss/try+
-            (with-beanstalk process-next-job worker)
+            (call process-next-job)
             true
             (catch Object _ false)))))
   (testing "missing directory doesn't throw out"
-    (let [[queue-state-ref _ worker] (setup)]
+    (let [[queue-state-ref _ call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/unknown"})
       (is (ss/try+
-            (with-beanstalk process-next-job worker)
+            (call process-next-job)
             true
             (catch Object _ false))))))
 
 
 (deftest test-remove-entry
-  (let [path                                  "/tempZone/home/user1/old-file"
-        [queue-state-ref es-state-ref worker] (setup)]
+  (let [path                                "/tempZone/home/user1/old-file"
+        [queue-state-ref es-state-ref call] (setup)]
     (populate-es es-state-ref {"iplant" {"file" {path {:name "old-file" :user "user1"}}}})
     (populate-queue queue-state-ref {:type "remove entry" :path path})
-    (with-beanstalk process-next-job worker)
+    (call process-next-job)
     (is (not (indexed? @es-state-ref "iplant" "file" path)))))
 
 
 (deftest test-sync
-  (let [[queue-state-ref es-state-ref worker] (setup)]
+  (let [[queue-state-ref es-state-ref call] (setup)]
     (populate-es es-state-ref 
                  {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
                                       "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
     (populate-queue queue-state-ref {:type "sync"})
-    (with-beanstalk process-next-job worker) 
+    (call process-next-job) 
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
              {:type "index members" :path "/tempZone/home/user1/"}
@@ -226,11 +224,11 @@
   
   
 (deftest test-sync-index
-  (let [[queue-state-ref es-state-ref worker] (setup)]
+  (let [[queue-state-ref es-state-ref call] (setup)]
     (populate-es es-state-ref 
                  {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
                                       "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
-    (with-beanstalk sync-index worker)
+    (call sync-index)
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
              {:type "index members" :path "/tempZone/home/user1/"}

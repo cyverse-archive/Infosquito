@@ -10,25 +10,12 @@
             [clojure-commons.config :as config]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es :as es]
+            [infosquito.irods-facade :as irods-wrapper]
             [infosquito.props :as props]
             [infosquito.worker :as worker])
   (:import [java.net URL]
            [java.util Properties]))
 
-
-(defmacro ^{:private true} trap-exceptions!
-  [& body]
-  `(ss/try+
-     (do ~@body)
-     (catch [:type :connection-refused] {:keys [~'msg]}
-       (log/error "connection failure." ~'msg))
-     (catch [:type :connection] {:keys [~'msg]} 
-       (log/error "connection failure." ~'msg))
-     (catch [:type :beanstalkd-oom] {:keys []}
-       (log/error "An error occurred. beanstalkd is out of memory and is"
-                  " probably wedged."))
-     (catch Object o# (log/error (:throwable ~'&throw-context) "unexpected error"))))
-  
 
 (defn- ->config-loader
   [& [cfg-file]]
@@ -36,37 +23,6 @@
     (fn [props-ref] (config/load-config-from-file nil cfg-file props-ref))
     (fn [props-ref] (config/load-config-from-zookeeper props-ref "infosquito"))))
 
-
-(defn- init-irods
-  [props]
-  (irods/init (props/get-irods-host props)
-              (str (props/get-irods-port props))
-              (props/get-irods-user props)
-              (props/get-irods-password props)
-              (props/get-irods-home props)
-              (props/get-irods-zone props)
-              (props/get-irods-default-resource props)))
-
-
-(defn- mk-queue
-  [props]
-  (letfn [(ctor [] (beanstalk/new-beanstalk (props/get-beanstalk-host props) 
-                                            (props/get-beanstalk-port props)))]
-    (queue/mk-client ctor
-                     1
-                     (props/get-job-ttr props)
-                     (props/get-work-tube props))))
-
-
-(defn- mk-worker
-  [props]
-  (worker/mk-worker (init-irods props)
-                    (mk-queue props)
-                    (es/mk-indexer (str (props/get-es-url props)))
-                    (props/get-irods-index-root props)
-                    (props/get-es-scroll-ttl props)
-                    (props/get-es-scroll-page-size props)))
- 
 
 (defn- update-props
   [load-props props]
@@ -85,23 +41,77 @@
       @props-ref))
         
 
+(defn- ->queue
+  [props]
+  (letfn [(ctor [] (beanstalk/new-beanstalk (props/get-beanstalk-host props) 
+                                            (props/get-beanstalk-port props)))]
+    (queue/mk-client ctor
+                     1
+                     (props/get-job-ttr props)
+                     (props/get-work-tube props))))
+
+
+(defn- ->worker
+  [props queue irods]
+  (worker/mk-worker queue
+                    irods
+                    (es/mk-indexer (str (props/get-es-url props)))
+                    (props/get-irods-index-root props)
+                    (props/get-es-scroll-ttl props)
+                    (props/get-es-scroll-page-size props)))
+ 
+
+(defn- init-irods
+  [props]
+  (irods/init (props/get-irods-host props)
+              (str (props/get-irods-port props))
+              (props/get-irods-user props)
+              (props/get-irods-password props)
+              (props/get-irods-home props)
+              (props/get-irods-zone props)
+              (props/get-irods-default-resource props)))
+
+
+(defmacro ^{:private true} trap-exceptions!
+  [& body]
+  `(ss/try+
+     (do ~@body)
+     (catch [:type :connection-refused] {:keys [~'msg]}
+       (log/error "connection failure." ~'msg))
+     (catch [:type :connection] {:keys [~'msg]} 
+       (log/error "connection failure." ~'msg))
+     (catch [:type :beanstalkd-oom] {:keys []}
+       (log/error "An error occurred. beanstalkd is out of memory and is"
+                  " probably wedged."))
+     (catch Object o# (log/error (:throwable ~'&throw-context) "unexpected error"))))
+
+
+(defmacro ^{:private true} with-worker
+  [props [worker-sym] & body]
+  `(trap-exceptions!
+     (let [queue#     (->queue ~props)
+           irods-cfg# (init-irods ~props)]
+       (queue/with-server queue# 
+         (irods-wrapper/with-irods irods-cfg# [irods#]
+           (let [~worker-sym (->worker ~props queue# irods#)]
+             (do ~@body)))))))
+
+  
 (defn- process-jobs
   [load-props]
   (loop [old-props (Properties.)]
     (let [props (update-props load-props old-props)]
-      (trap-exceptions!
-        (let [worker (mk-worker props)]
-          (queue/with-server (:queue worker)
-            (dorun (repeatedly #(worker/process-next-job worker))))))
+      (with-worker props [worker]
+        (dorun (repeatedly #(worker/process-next-job worker))))
       (Thread/sleep (props/get-retry-delay props))
       (recur props))))
 
 
 (defn- sync-index
   [load-props]
-  (trap-exceptions!
-    (let [worker (mk-worker (update-props load-props (Properties.)))]
-      (queue/with-server (:queue worker) (worker/sync-index worker)))))
+  (let [props (update-props load-props (Properties.))]
+    (with-worker props [worker] 
+      (worker/sync-index worker))))
   
 
 (defn- ->mode
