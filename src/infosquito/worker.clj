@@ -50,14 +50,15 @@
 
 (defn- get-members
   "throws:
-    :bad-dir-path - This is thrown if there is something wrong with the provided
-      directory path."
+    :bad-dir-path - This is thrown if there is something wrong with the provided directory path.
+    :missing-irods-entry - This is thrown if the directory doesn't exists.
+    :oom - This is thrown if the VM cannot allocate enough to store the paths of all of the 
+      members."
   [irods dir-path]
   (ss/try+
     (let [members (irods/list-paths irods dir-path :ignore-child-exns)]
       (when (some nil? members)
-        (log/warn "Ignoring members of" dir-path 
-                  "that have names that are too long."))
+        (log/warn "Ignoring members of" dir-path "that have names that are too long."))
       (remove nil? members))
     (catch [:error_code irods/ERR_BAD_DIRNAME_LENGTH] {:keys [full-path]}
       (ss/throw+ {:type :bad-dir-path 
@@ -71,8 +72,8 @@
       (ss/throw+ {:type :bad-dir-path 
                   :dir  full-path
                   :msg  "The directory path is too long"}))
-    (catch FileNotFoundException _
-      (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
+    (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))
+    (catch OutOfMemoryError _  (ss/throw+ {:type :oom :entry dir-path}))))
     
 
 (defn- get-viewers
@@ -150,7 +151,10 @@
         (log-stop-warn "beanstalkd is not accepting new jobs."))
       (catch [:type :bad-dir-path] {:keys [msg]} (log-stop-warn msg))
       (catch [:type :missing-irods-entry] {}
-        (log/debug "Stopping indexing members of" dir-path "because it doesn't exist anymore.")))))
+        (log/debug "Stopping indexing members of" dir-path "because it doesn't exist anymore."))
+      (catch [:type :oom] {} 
+        (log-stop-warn "The VM cannot allocate enough memory to hold the paths to all the"
+                       "members.")))))
   
   
 (defn- remove-entry

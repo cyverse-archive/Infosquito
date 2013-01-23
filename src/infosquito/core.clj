@@ -1,6 +1,5 @@
 (ns infosquito.core
-  "This namespace defines the entry point for Infosquito.  All state should be
-   in here."
+  "This namespace defines the entry point for Infosquito.  All state should be in here."
   (:gen-class)
   (:require [clojure.tools.cli :as cli]
             [clojure.tools.logging :as log]

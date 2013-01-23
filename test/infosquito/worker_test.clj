@@ -69,14 +69,26 @@
                                                         :avus {}}})
 
 
+(defn- mk-oom-proxy 
+  [repo-ref]
+  (letfn [(mk-ao-factory [] (boxy/->MockAOFactory #(boxy/->MockFileSystemAO repo-ref % true)
+                                                  (partial boxy/->MockEntryListAO repo-ref)
+                                                  (partial boxy/->MockCollectionAO repo-ref)
+                                                  (partial boxy/->MockDataObjectAO repo-ref)
+                                                  (partial boxy/->MockGroupAO repo-ref)
+                                                  (partial boxy/->MockUserAO repo-ref)
+                                                  (partial boxy/->MockQuotaAO repo-ref)))]
+    (boxy/->MockProxy mk-ao-factory (partial boxy/mk-mock-file-factory repo-ref))))
+
+
 (defn- populate-es
   [es-state-ref contents]
   (swap! es-state-ref #(set-contents % contents)))
 
 
 (defn- perform-op
-  [queue-state-ref es-state-ref op]
-  (let [proxy-ctor #(boxy/mk-mock-proxy (atom init-irods-repo))
+  [queue-state-ref es-state-ref irods-proxy-ctor op]
+  (let [proxy-ctor #(irods-proxy-ctor (atom init-irods-repo))
         irods-cfg  (irods/init "localhost" 
                                 "1297" 
                                 "user" 
@@ -95,10 +107,10 @@
 
 
 (defn- setup
-  []
+  [& [& {:keys [irods-proxy-ctor] :or {irods-proxy-ctor boxy/mk-mock-proxy}}]]
   (let [queue-state (atom beanstalk/default-state) 
         es-state    (atom (mk-indexer-state))]
-    [queue-state es-state (partial perform-op queue-state es-state)]))
+    [queue-state es-state (partial perform-op queue-state es-state irods-proxy-ctor)]))
 
 
 (defn- populate-queue
@@ -173,8 +185,17 @@
                                      (call process-next-job)
                                      false
                                      (catch Object _ true))]
+      (is (not thrown?))))
+  (testing "irods proxy oom"
+    (let [[queue-state-ref _ call] (setup :irods-proxy-ctor mk-oom-proxy)
+          thrown?                  (ss/try+
+                                     (populate-queue queue-state-ref 
+                                                     {:type "index entry" :path "/missing"})
+                                     (call process-next-job)
+                                     false
+                                     (catch Object _ true))]
       (is (not thrown?)))))
-  
+
 
 (deftest test-index-members
   (testing "normal operation"
