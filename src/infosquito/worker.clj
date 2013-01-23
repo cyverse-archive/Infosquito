@@ -152,14 +152,13 @@
       (catch [:type :bad-dir-path] {:keys [msg]} (log-stop-warn msg))
       (catch [:type :missing-irods-entry] {}
         (log/debug "Stopping indexing members of" dir-path "because it doesn't exist anymore."))
-      (catch [:type :oom] {} 
-        (log-stop-warn "The VM cannot allocate enough memory to hold the paths to all the"
-                       "members.")))))
+      (catch [:type :oom] {}
+        (log-stop-warn "The VM cannot allocate enough memory to hold the paths to all the members.")))))
   
   
 (defn- remove-entry
   [worker path]
-  #_(log/trace "removing" path)
+  (log/trace "removing" path)
   (let [indexer (:indexer worker)
         id      (mk-index-id path)]
     (log-when-es-failed "remove entry" (es/delete indexer index file-type id))

@@ -185,15 +185,6 @@
                                      (call process-next-job)
                                      false
                                      (catch Object _ true))]
-      (is (not thrown?))))
-  (testing "irods proxy oom"
-    (let [[queue-state-ref _ call] (setup :irods-proxy-ctor mk-oom-proxy)
-          thrown?                  (ss/try+
-                                     (populate-queue queue-state-ref 
-                                                     {:type "index entry" :path "/missing"})
-                                     (call process-next-job)
-                                     false
-                                     (catch Object _ true))]
       (is (not thrown?)))))
 
 
@@ -219,7 +210,16 @@
       (is (ss/try+
             (call process-next-job)
             true
-            (catch Object _ false))))))
+            (catch Object _ false)))))
+  (testing "irods proxy oom doesn't throw out"
+    (let [[queue-state-ref _ call] (setup :irods-proxy-ctor mk-oom-proxy)
+          thrown?                  (ss/try+
+                                     (populate-queue queue-state-ref 
+                                                     {:type "index members" :path "/zone"})
+                                     (call process-next-job)
+                                     false
+                                     (catch Object _ true))]
+      (is (not thrown?)))))
 
 
 (deftest test-remove-entry
