@@ -1,8 +1,6 @@
 (ns infosquito.core
-  "This namespace defines the entry point for Infosquito.  All state should be in here."
-  (:gen-class)
-  (:require [clojure.tools.cli :as cli]
-            [clojure.tools.logging :as log]
+  "All state should be in here."
+  (:require [clojure.tools.logging :as log]
             [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
@@ -14,13 +12,6 @@
             [infosquito.worker :as worker])
   (:import [java.net URL]
            [java.util Properties]))
-
-
-(defn- ->config-loader
-  [& [cfg-file]]
-  (if cfg-file
-    (fn [props-ref] (config/load-config-from-file nil cfg-file props-ref))
-    (fn [props-ref] (config/load-config-from-zookeeper props-ref "infosquito"))))
 
 
 (defn- update-props
@@ -121,36 +112,11 @@
              (ss/throw+ {:type :invalid-mode :mode mode-str})))
 
 
-(defn- parse-args
-  [args]
-  (ss/try+
-    (cli/cli args
-      ["-c" "--config"
-       "sets the local configuration file to be read, bypassing Zookeeper"]
-      ["-h" "--help"
-       "show help and exit"
-       :flag true]
-      ["-m" "--mode"
-       "Indicates how infosquito should be run. (sync|worker)"
-       :default "worker"])
-    (catch Exception e
-      (ss/throw+ {:type :cli :msg (.getMessage e)}))))
+(defn run-local
+  [mode cfg-file]
+  ((->mode mode) #(config/load-config-from-file nil cfg-file %)))
 
 
-(defn -main
-  [& args]
-  (ss/try+
-    (let [[opts _ help-str] (parse-args args)]
-      (if (:help opts)
-        (println help-str)
-        ((->mode (:mode opts)) (->config-loader (:config opts)))))
-    (catch [:type :cli] {:keys [msg]}
-      (log/error (str "There was a problem reading the command line input. ("
-                      msg ") Exiting.")))
-    (catch [:type :invalid-mode] {:keys [mode]}
-      (log/error "Invalid mode, " mode))
-    (catch [:type :cfg-problem] {:keys [msg]}
-      (log/error (str "There was a problem loading the configuration values. (" 
-                      msg ") Exiting.")))
-    (catch Object _
-      (log/error (:throwable &throw-context) "unexpected error"))))
+(defn run-zookeeper
+  [mode]
+  ((->mode mode) #(config/load-config-from-zookeeper % "infosquito")))
