@@ -1,8 +1,8 @@
 (ns infosquito.main
   "This namespace defines the entry point for Infosquito."
   (:gen-class)
-  (:require (clojure.tools [cli :as cli]
-                           [logging :as log])
+  (:require [clojure.tools.cli :as cli]
+            [clojure.tools.logging :as log]
             [slingshot.slingshot :as ss])
   (:import [java.util Properties]
            [org.apache.log4j PropertyConfigurator]))
@@ -25,18 +25,15 @@
     ["-h" "--help" "show help and exit"
           :flag true]
     ["-i" "--id" "This is the ID of the infosquito instance"
-          :default "anonymous"]
-    ["-m" "--mode" "Indicates how infosquito should be run. (sync|worker)"
-          :default "worker"]))
+          :default "anonymous"]))
 
 
 (defn- run
   [opts]
   (require 'infosquito.core)
-  (eval (let [mode (:mode opts)]
-          (if-let [config (:config opts)]
-            `(infosquito.core/run-local ~mode ~config)
-            `(infosquito.core/run-zookeeper ~mode)))))
+  (eval (if-let [config (:config opts)]
+            `(infosquito.core/run-local ~config)
+            `(infosquito.core/run-zookeeper))))
 
 
 (defn -main
@@ -48,7 +45,6 @@
     (configure-logger! (:id opts))
     (ss/try+
       (run opts)
-      (catch [:type :invalid-mode] {:keys [mode]} (log/error "Invalid mode, " mode))
       (catch [:type :cfg-problem] {:keys [msg]}
         (log/error "There was a problem loading the configuration values." msg "Exiting."))
       (catch Object _ (log/error (:throwable &throw-context) "UNEXPECTED ERROR - EXITING")))))

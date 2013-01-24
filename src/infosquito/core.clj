@@ -10,8 +10,7 @@
             [infosquito.irods-facade :as irods-wrapper]
             [infosquito.props :as props]
             [infosquito.worker :as worker])
-  (:import [java.net URL]
-           [java.util Properties]))
+  (:import [java.util Properties]))
 
 
 (defn- update-props
@@ -97,26 +96,11 @@
       (recur props))))
 
 
-(defn- sync-index
-  [load-props]
-  (let [props (update-props load-props (Properties.))]
-    (with-worker props [worker] 
-      (worker/sync-index worker))))
-  
-
-(defn- ->mode
-  [mode-str]
-  (condp = mode-str
-    "sync"   sync-index
-    "worker" process-jobs
-             (ss/throw+ {:type :invalid-mode :mode mode-str})))
-
-
 (defn run-local
-  [mode cfg-file]
-  ((->mode mode) #(config/load-config-from-file nil cfg-file %)))
+  [cfg-file]
+  (process-jobs #(config/load-config-from-file nil cfg-file %)))
 
 
 (defn run-zookeeper
-  [mode]
-  ((->mode mode) #(config/load-config-from-zookeeper % "infosquito")))
+  []
+  (process-jobs #(config/load-config-from-zookeeper % "infosquito")))

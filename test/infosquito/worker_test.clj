@@ -242,15 +242,4 @@
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
              {:type "index members" :path "/tempZone/home/user1/"}
              {:type "index members" :path "/tempZone/home/user2/"}})))) 
-  
-  
-(deftest test-sync-index
-  (let [[queue-state-ref es-state-ref call] (setup)]
-    (populate-es es-state-ref 
-                 {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
-                                      "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
-    (call sync-index)
-    (is (= (get-queued queue-state-ref)
-           #{{:type "remove entry" :path "/tempZone/home/old-user"}
-             {:type "index members" :path "/tempZone/home/user1/"}
-             {:type "index members" :path "/tempZone/home/user2/"}}))))
+

@@ -204,16 +204,8 @@
       (log/warn "Stopping removal of missing entries. beanstalkd is not accepting new jobs."))))
 
 
-(defn sync-index
-  "Synchronizes the search index with the iRODS repository.  It removes all entries it finds in the 
-   index that are no longer in the repository, then it reindexes all of the current entries in the 
-   repository.  This function doesn't actually make changes to the index.  Instead it schedules jobs 
-   in the work queue.
-
-   Parameters:
-     worker - The worker performing the job.
-
-   Throws:
+(defn- sync-index
+  "Throws:
      :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error internal to the 
        worker.
