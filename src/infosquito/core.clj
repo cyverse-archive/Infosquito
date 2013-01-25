@@ -1,6 +1,7 @@
 (ns infosquito.core
-  "All state should be in here."
-  (:require [clojure.tools.logging :as log]
+  "This namespace defines the entry point for Infosquito. All state should be in here."
+  (:require [clojure.tools.cli :as cli]
+            [clojure.tools.logging :as log]
             [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
@@ -104,3 +105,24 @@
 (defn run-zookeeper
   []
   (process-jobs #(config/load-config-from-zookeeper % "infosquito")))
+
+
+(defn- parse-args
+  [args]
+  (cli/cli args
+    ["-c" "--config" "sets the local configuration file to be read, bypassing Zookeeper"]
+    ["-h" "--help" "show help and exit"
+          :flag true]))
+
+
+(defn -main
+  [& args]
+  (ss/try+
+    (let [[opts _ help-str] (parse-args args)]
+      (when (:help opts)
+        (println help-str)
+        (System/exit 0))
+      (if-let [config (:config opts)]
+        (run-local config)
+        (run-zookeeper)))
+    (catch Object _ (log/error (:throwable &throw-context) "UNEXPECTED ERROR - EXITING"))))
