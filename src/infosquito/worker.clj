@@ -9,7 +9,8 @@
             [clojure-commons.file-utils :as file]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es-if :as es])
-  (:import [org.irods.jargon.core.exception FileNotFoundException]))
+  (:import [org.irods.jargon.core.exception FileNotFoundException]
+           [org.irods.jargon.core.pub.domain ObjStat$SpecColType]))
 
 
 (def ^{:private true} index "iplant")
@@ -46,34 +47,6 @@
     (if (irods/is-file? irods entry-path) file-type dir-type)
     (catch FileNotFoundException _
       (ss/throw+ {:type :missing-irods-entry :entry entry-path}))))
-
-
-(defn- get-members
-  "throws:
-    :bad-dir-path - This is thrown if there is something wrong with the provided directory path.
-    :missing-irods-entry - This is thrown if the directory doesn't exists.
-    :oom - This is thrown if the VM cannot allocate enough to store the paths of all of the 
-      members."
-  [irods dir-path]
-  (ss/try+
-    (let [members (irods/list-paths irods dir-path :ignore-child-exns)]
-      (when (some nil? members)
-        (log/warn "Ignoring members of" dir-path "that have names that are too long."))
-      (remove nil? members))
-    (catch [:error_code irods/ERR_BAD_DIRNAME_LENGTH] {:keys [full-path]}
-      (ss/throw+ {:type :bad-dir-path 
-                  :dir  full-path
-                  :msg  "The parent directory path is too long"}))
-    (catch [:error_code irods/ERR_BAD_BASENAME_LENGTH] {:keys [full-path]}
-      (ss/throw+ {:type :bad-dir-path 
-                  :dir  full-path
-                  :msg  "The directory name is too long"}))
-    (catch [:error_code irods/ERR_BAD_PATH_LENGTH] {:keys [full-path]}
-      (ss/throw+ {:type :bad-dir-path 
-                  :dir  full-path
-                  :msg  "The directory path is too long"}))
-    (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))
-    (catch OutOfMemoryError _  (ss/throw+ {:type :oom :entry dir-path}))))
     
 
 (defn- get-viewers
@@ -127,6 +100,61 @@
         (log/debug "Not indexing missing iRODS entry" entry)))))
 
 
+(defn- validate-path
+  [abs-path]
+  (ss/try+
+    (irods/validate-path-lengths abs-path)
+    (catch [:error_code irods/ERR_BAD_DIRNAME_LENGTH] {:keys [full-path]}
+      (ss/throw+ {:type :bad-path 
+                  :dir  full-path
+                  :msg  "The parent directory path is too long"}))
+    (catch [:error_code irods/ERR_BAD_BASENAME_LENGTH] {:keys [full-path]}
+      (ss/throw+ {:type :bad-path 
+                  :dir  full-path
+                  :msg  "The directory name is too long"}))
+    (catch [:error_code irods/ERR_BAD_PATH_LENGTH] {:keys [full-path]}
+      (ss/throw+ {:type :bad-path 
+                  :dir  full-path
+                  :msg  "The directory path is too long"}))))
+
+
+(defn- visit-entries
+  [list-page visit]
+  (loop [start-idx 0]
+    (let [page (list-page start-idx)]
+      (doseq [entry page]
+        (let [entry-path (.getFormattedAbsolutePath entry)]
+          (ss/try+
+            (validate-path entry-path)
+            (catch [:type :bad-path] {:keys [msg]} (log/warn "Not indexing" entry-path "-" msg)))
+          (visit entry)))
+      (when-let [last-entry (last page)]
+        (when-not (.isLastResult last-entry)
+          (recur (+ start-idx (.getCount last-entry))))))))
+
+
+(defn- list-member-collections
+  [irods dir-path start-idx]
+  (ss/try+
+    (.listCollectionsUnderPath (:lister irods) dir-path start-idx)
+    (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
+
+
+(defn- list-member-data-objects
+  [irods dir-path start-idx]
+  (ss/try+
+    (.listDataObjectsUnderPath (:lister irods) dir-path start-idx)
+    (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
+
+
+(defn- index-collection
+  [worker collection]
+  (let [collection-path (.getFormattedAbsolutePath collection)]
+    (index-entry worker collection-path dir-type)
+    (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
+      (queue/put (:queue worker) (json/json-str (mk-job index-members-job collection-path))))))
+
+
 (defn- index-members
   "Throws:
      :connection - This is thrown if it loses a required connection.
@@ -138,22 +166,18 @@
   (letfn [(log-stop-warn [reason] (log/warn (str "Stopping indexing members of " dir-path ". " 
                                                  reason)))]
     (ss/try+ 
-      (let [queue (:queue worker)
-            irods (:irods worker)]
-        (doseq [entry (get-members irods dir-path)]
-          (let [folder? (irods/is-dir? irods entry)]
-            (index-entry worker entry (if folder? dir-type file-type))
-            (when (and folder?
-                       (not (irods/is-linked-dir? irods entry)))
-              (queue/put queue (json/json-str (mk-job index-members-job entry)))))))
+      (let [irods (:irods worker)]
+        (validate-path dir-path)
+        (visit-entries (partial list-member-collections irods dir-path)
+                       (partial index-collection worker))
+        (visit-entries (partial list-member-data-objects irods dir-path)
+                       #(index-entry worker (.getFormattedAbsolutePath %) file-type)))
       (catch [:type :beanstalkd-oom] {} (log-stop-warn "beanstalkd is out of memory."))
       (catch [:type :beanstalkd-draining] {} 
         (log-stop-warn "beanstalkd is not accepting new jobs."))
-      (catch [:type :bad-dir-path] {:keys [msg]} (log-stop-warn msg))
+      (catch [:type :bad-path] {:keys [msg]} (log-stop-warn msg))
       (catch [:type :missing-irods-entry] {}
-        (log/debug "Stopping indexing members of" dir-path "because it doesn't exist anymore."))
-      (catch [:type :oom] {}
-        (log-stop-warn "The VM cannot allocate enough memory to hold the paths to all the members.")))))
+        (log/debug "Stopping indexing members of" dir-path "because it doesn't exist anymore.")))))
   
   
 (defn- remove-entry
