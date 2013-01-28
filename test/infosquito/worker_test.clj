@@ -40,6 +40,24 @@
    "/tempZone/home/user1/readable-dir"                 {:type :normal-dir
                                                         :acl  {"user1" :read}
                                                         :avus {}}
+   "/tempZone/home/user1/readable-dir/dir1"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir2"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir3"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir4"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir5"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir6"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
    "/tempZone/home/user1/unreadable-dir"               {:type :normal-dir
                                                         :acl  {}
                                                         :avus {}}
@@ -189,7 +207,7 @@
 
 
 (deftest test-index-members
-  (testing "normal operation"
+  (testing "normal operation no paging"
     (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user1"})
       (call process-next-job)
@@ -197,6 +215,12 @@
       (is (= (get-queued queue-state-ref)
              #{{:type "index members" :path "/tempZone/home/user1/readable-dir"}
                {:type "index members" :path "/tempZone/home/user1/unreadable-dir"}}))))
+  (testing "normal operation paging"
+    (let [[queue-state-ref es-state-ref call] (setup)]
+      (populate-queue queue-state-ref {:type "index members" 
+                                       :path "/tempZone/home/user1/readable-dir"})
+      (call process-next-job)
+      (is (= 6 (count (get-queued queue-state-ref))))))
   (testing "dir name too long doesn't throw out"
     (let [[queue-state-ref _ call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user2/trash"})
