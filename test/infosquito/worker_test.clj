@@ -195,15 +195,15 @@
       (call process-next-job)
       (is (has-index? @es-state-ref "iplant"))
       (is (= (get-queued queue-state-ref)
-             #{{:type "index members" :path "/tempZone/home/user1/readable-dir/"}
-               {:type "index members" :path "/tempZone/home/user1/unreadable-dir/"}}))))
+             #{{:type "index members" :path "/tempZone/home/user1/readable-dir"}
+               {:type "index members" :path "/tempZone/home/user1/unreadable-dir"}}))))
   (testing "dir name too long doesn't throw out"
     (let [[queue-state-ref _ call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user2/trash"})
       (is (ss/try+
             (call process-next-job)
             true
-            (catch Object _ false)))))
+            (catch Object o (println  (:throwable &throw-context) ) false)))))
   (testing "missing directory doesn't throw out"
     (let [[queue-state-ref _ call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/unknown"})
@@ -240,6 +240,6 @@
     (call process-next-job) 
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
-             {:type "index members" :path "/tempZone/home/user1/"}
-             {:type "index members" :path "/tempZone/home/user2/"}})))) 
+             {:type "index members" :path "/tempZone/home/user1"}
+             {:type "index members" :path "/tempZone/home/user2"}})))) 
 

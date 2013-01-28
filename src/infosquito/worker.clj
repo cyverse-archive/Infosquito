@@ -126,8 +126,8 @@
         (let [entry-path (.getFormattedAbsolutePath entry)]
           (ss/try+
             (validate-path entry-path)
-            (catch [:type :bad-path] {:keys [msg]} (log/warn "Not indexing" entry-path "-" msg)))
-          (visit entry)))
+            (visit entry)
+            (catch [:type :bad-path] {:keys [msg]} (log/warn "Not indexing" entry-path "-" msg)))))
       (when-let [last-entry (last page)]
         (when-not (.isLastResult last-entry)
           (recur (+ start-idx (.getCount last-entry))))))))
