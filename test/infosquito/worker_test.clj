@@ -58,6 +58,42 @@
    "/tempZone/home/user1/readable-dir/dir6"            {:type :normal-dir
                                                         :acl  {"user1" :read}
                                                         :avus {}}
+   "/tempZone/home/user1/readable-dir/dir7"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir8"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir9"            {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/dir10"           {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
+   "/tempZone/home/user1/readable-dir/file1"           {:type    :file
+                                                        :acl     {"user1" :read}
+                                                        :avus    {}
+                                                        :content ""}
+   "/tempZone/home/user1/readable-dir/file2"           {:type    :file
+                                                        :acl     {"user1" :read}
+                                                        :avus    {}
+                                                        :content ""}
+   "/tempZone/home/user1/readable-dir/file3"           {:type    :file
+                                                        :acl     {"user1" :read}
+                                                        :avus    {}
+                                                        :content ""}
+   "/tempZone/home/user1/readable-dir/file4"           {:type    :file
+                                                        :acl     {"user1" :read}
+                                                        :avus    {}
+                                                        :content ""}
+   "/tempZone/home/user1/readable-dir/file5"           {:type    :file
+                                                        :acl     {"user1" :read}
+                                                        :avus    {}
+                                                        :content ""}
+   "/tempZone/home/user1/readable-dir/file6"           {:type    :file
+                                                        :acl     {"user1" :read}
+                                                        :avus    {}
+                                                        :content ""}
    "/tempZone/home/user1/unreadable-dir"               {:type :normal-dir
                                                         :acl  {}
                                                         :avus {}}
@@ -220,14 +256,16 @@
       (populate-queue queue-state-ref {:type "index members" 
                                        :path "/tempZone/home/user1/readable-dir"})
       (call process-next-job)
-      (is (= 6 (count (get-queued queue-state-ref))))))
-  (testing "dir name too long doesn't throw out"
+      (is (= 10 (count (get-queued queue-state-ref))))
+      (is (= 10 (count (get-ids @es-state-ref "iplant" "folder"))))
+      (is (= 6 (count (get-ids @es-state-ref "iplant" "file"))))))
+   (testing "dir name too long doesn't throw out"
     (let [[queue-state-ref _ call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/tempZone/home/user2/trash"})
       (is (ss/try+
             (call process-next-job)
             true
-            (catch Object o (println  (:throwable &throw-context) ) false)))))
+            (catch Object o false)))))
   (testing "missing directory doesn't throw out"
     (let [[queue-state-ref _ call] (setup)]
       (populate-queue queue-state-ref {:type "index members" :path "/unknown"})

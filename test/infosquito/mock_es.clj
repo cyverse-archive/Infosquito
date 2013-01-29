@@ -76,7 +76,12 @@
   [state index type id]
   (get-in state [:repo index type id]))
 
-    
+
+(defn get-ids
+  [state index type]
+  (set (keys (get-in state [:repo index type]))))
+
+
 (defn has-index?
   [state index]
   (boolean (get-in state [:repo index])))

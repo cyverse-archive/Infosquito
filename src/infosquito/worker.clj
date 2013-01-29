@@ -51,8 +51,7 @@
 
 (defn- get-viewers
   "throws:
-     :missing-irods-entry - This is thrown entry-path doesn't point to a valid
-       entry in iRODS"
+     :missing-irods-entry - This is thrown entry-path doesn't point to a valid entry in iRODS"
   [irods entry-path]
   (letfn [(view? [perms] (or (:read perms)
                              (:write perms)
@@ -62,8 +61,7 @@
         (irods/list-user-perms irods) 
         (filter #(view? (:permissions %)))
         (map :user))
-      (catch FileNotFoundException _
-        (ss/throw+ {:type :missing-irods-entry :entry entry-path})))))
+      (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path})))))
 
   
 ;; Indexer Functions
@@ -155,6 +153,11 @@
       (queue/put (:queue worker) (json/json-str (mk-job index-members-job collection-path))))))
 
 
+(defn- index-data-object
+  [worker data-object]
+  (index-entry worker (.getFormattedAbsolutePath data-object) file-type))
+
+
 (defn- index-members
   "Throws:
      :connection - This is thrown if it loses a required connection.
@@ -171,7 +174,7 @@
         (visit-entries (partial list-member-collections irods dir-path)
                        (partial index-collection worker))
         (visit-entries (partial list-member-data-objects irods dir-path)
-                       #(index-entry worker (.getFormattedAbsolutePath %) file-type)))
+                       (partial index-data-object worker)))
       (catch [:type :beanstalkd-oom] {} (log-stop-warn "beanstalkd is out of memory."))
       (catch [:type :beanstalkd-draining] {} 
         (log-stop-warn "beanstalkd is not accepting new jobs."))
