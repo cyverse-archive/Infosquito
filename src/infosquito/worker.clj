@@ -89,17 +89,17 @@
 
 (defn- visit-entries
   [list-page visit]
-  (loop [start-idx 0]
-    (let [page (list-page start-idx)]
-      (doseq [entry page]
-        (let [entry-path (.getFormattedAbsolutePath entry)]
-          (ss/try+
-            (validate-path entry-path)
-            (visit entry)
-            (catch [:type :bad-path] {:keys [msg]} (log/warn "skipping" entry-path "-" msg)))))
-       (when-let [last-entry (last page)]
-        (when-not (.isLastResult last-entry)
-          (recur (+ start-idx (.getCount last-entry))))))))
+  (letfn [(visit' [_ entry] (let [path (.getFormattedAbsolutePath entry)]
+                              (ss/try+
+                                (validate-path path)
+                                (visit entry)
+                                (catch [:type :bad-path] {:keys [msg]}
+                                  (log/warn "skipping" path "-" msg)))
+                              entry))]
+	  (loop [start-idx 0]
+     (when-let [last-entry (reduce visit' nil (list-page start-idx))]
+       (when-not (.isLastResult last-entry)
+         (recur (+ start-idx (.getCount last-entry))))))))
 
 
 (defn- list-member-collections
