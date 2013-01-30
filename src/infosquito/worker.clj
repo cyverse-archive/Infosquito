@@ -31,6 +31,11 @@
   response)
 
 
+(defn- log-missing-entry
+  [entry]
+  (log/debug "Skipping missing entry" entry))
+
+
 (defn- mk-job
   [type path]
   {:type type :path path})
@@ -64,40 +69,6 @@
       (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path})))))
 
 
-;; Indexer Functions
-
-
-(defn- mk-index-doc
-  [path viewers]
-  {:name (file/basename path) :viewers viewers})
-
-
-(defn- mk-index-id
-  [entry-path]
-  (file/rm-last-slash entry-path))
-
-
-;; Work Logic
-
-
-(defn- index-entry
-  "Throws:
-     :connection - This is thrown if it fails to connect to iRODS."
-  ([worker path]
-    (index-entry worker path (get-mapping-type (:irods worker) path)))
-  ([worker path type]
-    (log/trace "indexing" path)
-    (ss/try+
-      (log-when-es-failed "index entry"
-                          (es/put (:indexer worker)
-                                  index
-                                  type
-                                  (mk-index-id path)
-                                  (mk-index-doc path (get-viewers (:irods worker) path))))
-      (catch [:type :missing-irods-entry] {:keys [entry]}
-        (log/debug "Not indexing missing iRODS entry" entry)))))
-
-
 (defn- validate-path
   [abs-path]
   (ss/try+
@@ -125,8 +96,8 @@
           (ss/try+
             (validate-path entry-path)
             (visit entry)
-            (catch [:type :bad-path] {:keys [msg]} (log/warn "Not indexing" entry-path "-" msg)))))
-      (when-let [last-entry (last page)]
+            (catch [:type :bad-path] {:keys [msg]} (log/warn "skipping" entry-path "-" msg)))))
+       (when-let [last-entry (last page)]
         (when-not (.isLastResult last-entry)
           (recur (+ start-idx (.getCount last-entry))))))))
 
@@ -145,17 +116,61 @@
     (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
 
 
+;; Indexer Functions
+
+
+(defn- mk-index-doc
+  [path viewers]
+  {:name (file/basename path) :viewers viewers})
+
+
+(defn- mk-index-id
+  [entry-path]
+  (file/rm-last-slash entry-path))
+
+
+;; Work Logic
+
+
+(defn- index-entry
+  "Throws:
+     :connection - This is thrown if it fails to connect to iRODS.
+     :missing-irods-entry - This is thrown if the entry doesn't exist, or in the case of a linked 
+       collection, the destination collection doesn't exist."
+  ([worker path type]
+    (log/trace "indexing" path)
+    (log-when-es-failed "index entry"
+                        (es/put (:indexer worker) 
+                                index 
+                                type 
+                                (mk-index-id path) 
+                                (mk-index-doc path (get-viewers (:irods worker) path))))))
+ 
+
+(defn- index-entry-log-missing
+  "Throws:
+     :connection - This is thrown if it fails to connect to iRODS."
+  [worker path]
+  (ss/try+
+    (index-entry worker path (get-mapping-type (:irods worker) path))
+    (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
+
+
 (defn- index-collection
   [worker collection]
-  (let [collection-path (.getFormattedAbsolutePath collection)]
-    (index-entry worker collection-path dir-type)
-    (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
-      (queue/put (:queue worker) (cheshire/encode (mk-job index-members-job collection-path))))))
+  (ss/try+
+    (let [collection-path (.getFormattedAbsolutePath collection)]
+      (index-entry worker collection-path dir-type)
+      (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
+        (queue/put (:queue worker) (json/json-str (mk-job index-members-job collection-path)))))
+    (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
 
 (defn- index-data-object
   [worker data-object]
-  (index-entry worker (.getFormattedAbsolutePath data-object) file-type))
+  (ss/try+
+    (index-entry worker (.getFormattedAbsolutePath data-object) file-type)
+    (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
 
 (defn- index-members
@@ -253,7 +268,7 @@
   [worker job]
   (let [type (:type job)]
     (condp = type
-      index-entry-job   (index-entry worker (:path job))
+      index-entry-job   (index-entry-log-missing worker (:path job))
       index-members-job (index-members worker (:path job))
       remove-entry-job  (remove-entry worker (:path job))
       sync-job          (sync-index worker)
