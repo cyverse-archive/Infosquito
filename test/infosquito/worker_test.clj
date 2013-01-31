@@ -2,7 +2,7 @@
   (:use clojure.test
         infosquito.worker
         infosquito.mock-es)
-  (:require [clojure.data.json :as json]
+  (:require [cheshire.core :as cheshire]
             [slingshot.slingshot :as ss]
             [boxy.core :as boxy]
             [clj-jargon.jargon :as irods]
@@ -12,10 +12,10 @@
             [infosquito.irods-facade :as irods-wrapper]))
 
 
-(def ^{:private true} too-long-dir-name 
+(def ^{:private true} too-long-dir-name
   "/tempZone/home/user2/trash/home-rods-wregglej-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.183209331-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 
-  
+
 (def ^{:private true} init-irods-repo
   {:users                                              #{"user1" "user2"}
    :groups                                             {}
@@ -23,9 +23,9 @@
                                                         :acl  {}
                                                         :avus {}}
    "/tempZone/home"                                    {:type :normal-dir
-                                                        :acl  {"user1" :read 
+                                                        :acl  {"user1" :read
                                                                "user2" :read}
-                                                        :avus {}}        
+                                                        :avus {}}
    "/tempZone/home/user1"                              {:type    :normal-dir
                                                         :acl     {"user1" :read}
                                                         :avus    {}}
@@ -123,7 +123,7 @@
                                                         :avus {}}})
 
 
-(defn- mk-oom-proxy 
+(defn- mk-oom-proxy
   [repo-ref]
   (letfn [(mk-ao-factory [] (boxy/->MockAOFactory #(boxy/->MockFileSystemAO repo-ref % true)
                                                   (partial boxy/->MockEntryListAO repo-ref)
@@ -143,46 +143,47 @@
 (defn- perform-op
   [queue-state-ref es-state-ref irods-proxy-ctor op]
   (let [proxy-ctor #(irods-proxy-ctor (atom init-irods-repo))
-        irods-cfg  (irods/init "localhost" 
-                                "1297" 
-                                "user" 
-                                "/tempZone/home/rods" 
-                                "rods" 
-                                "tempZone" 
+        irods-cfg  (irods/init "localhost"
+                                "1297"
+                                "user"
+                                "/tempZone/home/rods"
+                                "rods"
+                                "tempZone"
                                 "dr"
                                 :proxy-ctor proxy-ctor)
-        queue      (queue/mk-client #(beanstalk/mk-mock-beanstalk queue-state-ref) 
-                                    3 
-                                    120 
+        queue      (queue/mk-client #(beanstalk/mk-mock-beanstalk queue-state-ref)
+                                    3
+                                    120
                                     "infosquito")]
     (queue/with-server queue
-      (irods-wrapper/with-irods irods-cfg [irods] 
+      (irods-wrapper/with-irods irods-cfg [irods]
         (op (mk-worker queue irods (->MockIndexer es-state-ref) "/tempZone/home" "10m" 50))))))
 
 
 (defn- setup
   [& [& {:keys [irods-proxy-ctor] :or {irods-proxy-ctor boxy/mk-mock-proxy}}]]
-  (let [queue-state (atom beanstalk/default-state) 
+  (let [queue-state (atom beanstalk/default-state)
         es-state    (atom (mk-indexer-state))]
     [queue-state es-state (partial perform-op queue-state es-state irods-proxy-ctor)]))
 
 
 (defn- populate-queue
   [queue-state-ref job]
-  (swap! queue-state-ref 
-         #(-> % 
+  (swap! queue-state-ref
+         #(-> %
             (beanstalk/use-tube "infosquito")
-            (beanstalk/put-job 10 (json/json-str job))
+            (beanstalk/put-job 10 (cheshire/encode job))
             first)))
 
 
 (defn- get-queued
   [queue-state-ref]
-  (set (map #(-> % :payload json/read-json) (beanstalk/get-jobs @queue-state-ref "infosquito")))) 
+  (set (map #(-> % :payload (cheshire/decode true))
+            (beanstalk/get-jobs @queue-state-ref "infosquito"))))
 
 
 (deftest test-release-on-fail
-  (let [job                                 {:type "index entry" 
+  (let [job                                 {:type "index entry"
                                              :path "/tempZone/home/user1/readable-file"}
         [queue-state-ref es-state-ref call] (setup)]
     (populate-queue queue-state-ref job)
@@ -191,17 +192,17 @@
       (call process-next-job)
       (catch Object _))
     (is (= job
-           (-> @queue-state-ref 
-             (beanstalk/peek-ready "infosquito") 
-             :payload 
-             json/read-json)))
+           (-> @queue-state-ref
+             (beanstalk/peek-ready "infosquito")
+             :payload
+             (cheshire/decode true))))
     (is (= (not (has-index? @es-state-ref "iplant"))))))
 
-  
+
 (deftest test-index-entry
   (testing "index readable file"
     (let [[queue-state-ref es-state-ref call] (setup)]
-      (populate-queue queue-state-ref 
+      (populate-queue queue-state-ref
                       {:type "index entry" :path "/tempZone/home/user1/readable-file"})
       (call process-next-job)
       (is (not (beanstalk/jobs? @queue-state-ref)))
@@ -209,32 +210,32 @@
              {:name "readable-file" :viewers ["user1"]}))))
   (testing "index readable folder"
     (let [[queue-state-ref es-state-ref call] (setup)]
-      (populate-queue queue-state-ref 
+      (populate-queue queue-state-ref
                       {:type "index entry" :path "/tempZone/home/user1/readable-dir"})
       (call process-next-job)
       (is (= (get-doc @es-state-ref "iplant" "folder" "/tempZone/home/user1/readable-dir")
              {:name "readable-dir" :viewers ["user1"]}))))
   (testing "index unreadable entry"
-    (let [[queue-state-ref es-state-ref call] (setup)]    
-      (populate-queue queue-state-ref 
-                      {:type "index entry" 
+    (let [[queue-state-ref es-state-ref call] (setup)]
+      (populate-queue queue-state-ref
+                      {:type "index entry"
                        :path "/tempZone/home/user1/unreadable-file"})
       (call process-next-job)
       (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/unreadable-file")
              {:name "unreadable-file" :viewers []}))))
   (testing "index multiple viewers"
-    (let [[queue-state-ref es-state-ref call] (setup)]    
+    (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref {:type "index entry" :path "/tempZone/home"})
       (call process-next-job)
-      (is (= (-> @es-state-ref 
-               (get-doc "iplant" "folder" "/tempZone/home") 
-               :viewers 
+      (is (= (-> @es-state-ref
+               (get-doc "iplant" "folder" "/tempZone/home")
+               :viewers
                set)
              #{"user1" "user2"}))))
   (testing "missing entry"
     (let [[queue-state-ref _ call] (setup)
           thrown?                  (ss/try+
-                                     (populate-queue queue-state-ref 
+                                     (populate-queue queue-state-ref
                                                      {:type "index entry" :path "/missing"})
                                      (call process-next-job)
                                      false
@@ -253,7 +254,7 @@
                {:type "index members" :path "/tempZone/home/user1/unreadable-dir"}}))))
   (testing "normal operation paging"
     (let [[queue-state-ref es-state-ref call] (setup)]
-      (populate-queue queue-state-ref {:type "index members" 
+      (populate-queue queue-state-ref {:type "index members"
                                        :path "/tempZone/home/user1/readable-dir"})
       (call process-next-job)
       (is (= 10 (count (get-queued queue-state-ref))))
@@ -276,7 +277,7 @@
   (testing "irods proxy oom doesn't throw out"
     (let [[queue-state-ref _ call] (setup :irods-proxy-ctor mk-oom-proxy)
           thrown?                  (ss/try+
-                                     (populate-queue queue-state-ref 
+                                     (populate-queue queue-state-ref
                                                      {:type "index members" :path "/zone"})
                                      (call process-next-job)
                                      false
@@ -295,13 +296,12 @@
 
 (deftest test-sync
   (let [[queue-state-ref es-state-ref call] (setup)]
-    (populate-es es-state-ref 
+    (populate-es es-state-ref
                  {"iplant" {"folder" {"/tempZone/home/old-user" {:name "old-user" :user "old-user"}
                                       "/tempZone/home/user1"    {:name "user1" :user "user1"}}}})
     (populate-queue queue-state-ref {:type "sync"})
-    (call process-next-job) 
+    (call process-next-job)
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
              {:type "index members" :path "/tempZone/home/user1"}
-             {:type "index members" :path "/tempZone/home/user2"}})))) 
-
+             {:type "index members" :path "/tempZone/home/user2"}}))))
