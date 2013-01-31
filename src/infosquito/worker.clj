@@ -1,5 +1,5 @@
 (ns infosquito.worker
-  (:require [clojure.data.json :as json]
+  (:require [cheshire.core :as cheshire]
             [clojure.tools.logging :as log]
             [clojurewerkz.elastisch.query :as ceq]
             [clojurewerkz.elastisch.rest :as cer]
@@ -28,12 +28,12 @@
   [op-name response]
   (if-not (cerr/ok? response)
     (log/error op-name "failed" response))
-  response) 
-  
-  
+  response)
+
+
 (defn- mk-job
   [type path]
-  {:type type :path path}) 
+  {:type type :path path})
 
 
 ;; IRODS Functions
@@ -47,7 +47,7 @@
     (if (irods/is-file? irods entry-path) file-type dir-type)
     (catch FileNotFoundException _
       (ss/throw+ {:type :missing-irods-entry :entry entry-path}))))
-    
+
 
 (defn- get-viewers
   "throws:
@@ -57,13 +57,13 @@
                              (:write perms)
                              (:own perms)))]
     (ss/try+
-      (->> entry-path 
-        (irods/list-user-perms irods) 
+      (->> entry-path
+        (irods/list-user-perms irods)
         (filter #(view? (:permissions %)))
         (map :user))
       (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path})))))
 
-  
+
 ;; Indexer Functions
 
 
@@ -83,16 +83,16 @@
 (defn- index-entry
   "Throws:
      :connection - This is thrown if it fails to connect to iRODS."
-  ([worker path] 
+  ([worker path]
     (index-entry worker path (get-mapping-type (:irods worker) path)))
   ([worker path type]
     (log/trace "indexing" path)
     (ss/try+
       (log-when-es-failed "index entry"
-                          (es/put (:indexer worker) 
-                                  index 
-                                  type 
-                                  (mk-index-id path) 
+                          (es/put (:indexer worker)
+                                  index
+                                  type
+                                  (mk-index-id path)
                                   (mk-index-doc path (get-viewers (:irods worker) path))))
       (catch [:type :missing-irods-entry] {:keys [entry]}
         (log/debug "Not indexing missing iRODS entry" entry)))))
@@ -103,15 +103,15 @@
   (ss/try+
     (irods/validate-path-lengths abs-path)
     (catch [:error_code irods/ERR_BAD_DIRNAME_LENGTH] {:keys [full-path]}
-      (ss/throw+ {:type :bad-path 
+      (ss/throw+ {:type :bad-path
                   :dir  full-path
                   :msg  "The parent directory path is too long"}))
     (catch [:error_code irods/ERR_BAD_BASENAME_LENGTH] {:keys [full-path]}
-      (ss/throw+ {:type :bad-path 
+      (ss/throw+ {:type :bad-path
                   :dir  full-path
                   :msg  "The directory name is too long"}))
     (catch [:error_code irods/ERR_BAD_PATH_LENGTH] {:keys [full-path]}
-      (ss/throw+ {:type :bad-path 
+      (ss/throw+ {:type :bad-path
                   :dir  full-path
                   :msg  "The directory path is too long"}))))
 
@@ -150,7 +150,7 @@
   (let [collection-path (.getFormattedAbsolutePath collection)]
     (index-entry worker collection-path dir-type)
     (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
-      (queue/put (:queue worker) (json/json-str (mk-job index-members-job collection-path))))))
+      (queue/put (:queue worker) (cheshire/encode (mk-job index-members-job collection-path))))))
 
 
 (defn- index-data-object
@@ -161,14 +161,14 @@
 (defn- index-members
   "Throws:
      :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error internal to the work 
+     :internal-error - This is thrown if there is an error in the logic error internal to the work
        queue.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker dir-path]
   (log/trace "indexing the members of" dir-path)
-  (letfn [(log-stop-warn [reason] (log/warn (str "Stopping indexing members of " dir-path ". " 
+  (letfn [(log-stop-warn [reason] (log/warn (str "Stopping indexing members of " dir-path ". "
                                                  reason)))]
-    (ss/try+ 
+    (ss/try+
       (let [irods (:irods worker)]
         (validate-path dir-path)
         (visit-entries (partial list-member-collections irods dir-path)
@@ -176,13 +176,13 @@
         (visit-entries (partial list-member-data-objects irods dir-path)
                        (partial index-data-object worker)))
       (catch [:type :beanstalkd-oom] {} (log-stop-warn "beanstalkd is out of memory."))
-      (catch [:type :beanstalkd-draining] {} 
+      (catch [:type :beanstalkd-draining] {}
         (log-stop-warn "beanstalkd is not accepting new jobs."))
       (catch [:type :bad-path] {:keys [msg]} (log-stop-warn msg))
       (catch [:type :missing-irods-entry] {}
         (log/debug "Stopping indexing members of" dir-path "because it doesn't exist anymore.")))))
-  
-  
+
+
 (defn- remove-entry
   [worker path]
   (log/trace "removing" path)
@@ -194,8 +194,8 @@
 
 (defn- init-index-scrolling
   [worker]
-  (let [resp (es/search-all-types (:indexer worker) 
-                                    index 
+  (let [resp (es/search-all-types (:indexer worker)
+                                    index
                                     {:search_type "scan"
                                      :scroll      (:scroll-ttl worker)
                                      :size        (:scroll-page-size worker)
@@ -203,12 +203,12 @@
     (if-let [scroll-id (:_scroll_id resp)]
       scroll-id
       (ss/throw+ {:type :index-scroll :resp resp}))))
- 
+
 
 (defn- remove-missing-entries
   "Throws:
      :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error internal to the 
+     :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker]
@@ -221,7 +221,7 @@
             (when (pos? (count (cerr/hits-from resp)))
               ; TODO renew reservation
               (doseq [path (remove #(irods/exists? (:irods worker) %) (cerr/ids-from resp))]
-                (queue/put (:queue worker) (json/json-str (mk-job remove-entry-job path))))
+                (queue/put (:queue worker) (cheshire/encode (mk-job remove-entry-job path))))
               (recur (:_scroll_id resp)))))))
     (catch [:type :index-scroll] {:keys [resp]}
       (log/error "Stopping removal of missing entries." resp))
@@ -234,7 +234,7 @@
 (defn- sync-index
   "Throws:
      :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error internal to the 
+     :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker]
@@ -247,7 +247,7 @@
 (defn- dispatch-job
   "Throws:
      :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error internal to the 
+     :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker job]
@@ -267,11 +267,11 @@
      queue-client - the connected queue client
      irods - The irods proxy
      indexer - The client for the Elastic Search platform
-     index-root - This is the absolute path into irods indicating the directory whose contents are 
+     index-root - This is the absolute path into irods indicating the directory whose contents are
        to be indexed.
      scroll-ttl - The amount of time Elastic Search will persist a scan result
      scroll-page-size - The number of scan result entries to return for a single scroll call.
-       
+
    Returns:
      A worker object"
   [queue-client irods indexer index-root scroll-ttl scroll-page-size]
@@ -284,7 +284,7 @@
 
 
 (defn process-next-job
-  "Reads the next available job from the queue and performs it.  If there are no jobs in the queue, 
+  "Reads the next available job from the queue and performs it.  If there are no jobs in the queue,
    it will wait for the next available job.
 
    Parameters:
@@ -292,7 +292,7 @@
 
    Throws:
      :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error internal to the 
+     :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
      :unknown-error - This is thrown if an unidentifiable error occurs.
      :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
@@ -300,10 +300,10 @@
   (let [queue (:queue worker)]
     (when-let [job (queue/reserve queue)]
       (ss/try+
-        (dispatch-job worker (json/read-json (:payload job)))
+        (dispatch-job worker (cheshire/decode (:payload job) true))
         (queue/delete queue (:id job))
         (catch Object _
-          (ss/try+ 
+          (ss/try+
             (queue/release queue (:id job))
             (catch Object o))
           (ss/throw+))))))
