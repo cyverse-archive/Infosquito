@@ -162,7 +162,7 @@
     (let [collection-path (.getFormattedAbsolutePath collection)]
       (index-entry worker collection-path dir-type)
       (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
-        (queue/put (:queue worker) (json/json-str (mk-job index-members-job collection-path)))))
+        (queue/put (:queue worker) (cheshire/encode (mk-job index-members-job collection-path)))))
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
 
