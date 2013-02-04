@@ -97,12 +97,12 @@
       (recur props))))
 
 
-(defn run-local
+(defn- run-local
   [cfg-file]
   (process-jobs #(config/load-config-from-file nil cfg-file %)))
 
 
-(defn run-zookeeper
+(defn- run-zookeeper
   []
   (process-jobs #(config/load-config-from-zookeeper % "infosquito")))
 
