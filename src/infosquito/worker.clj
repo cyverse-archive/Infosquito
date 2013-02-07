@@ -99,7 +99,7 @@
 	  (loop [start-idx 0]
      (when-let [last-entry (reduce visit' nil (list-page start-idx))]
        (when-not (.isLastResult last-entry)
-         (recur (+ start-idx (.getCount last-entry))))))))
+         (recur (.getCount last-entry)))))))
 
 
 (defn- list-member-collections
