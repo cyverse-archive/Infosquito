@@ -15,9 +15,12 @@
 (def ^{:private true} too-long-dir-name
   "/tempZone/home/user2/trash/home-rods-wregglej-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.183209331-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 
+(def ^{:private true} multibyte-user-name (str "bcourtois" \u00a0))
+
+(def ^{:private true} multibyte-path (str "/tempZone/home/" multibyte-user-name))
 
 (def ^{:private true} init-irods-repo
-  {:users                                              #{"user1" "user2"}
+  {:users                                              #{"user1" "user2" multibyte-user-name}
    :groups                                             {}
    "/tempZone"                                         {:type :normal-dir
                                                         :acl  {}
@@ -26,9 +29,12 @@
                                                         :acl  {"user1" :read
                                                                "user2" :read}
                                                         :avus {}}
-   "/tempZone/home/user1"                              {:type    :normal-dir
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}}
+   multibyte-path                                      {:type :normal-dir
+                                                        :acl  {multibyte-user-name :own}
+                                                        :avus {}}
+   "/tempZone/home/user1"                              {:type :normal-dir
+                                                        :acl  {"user1" :read}
+                                                        :avus {}}
    "/tempZone/home/user1/readable-file"                {:type    :file
                                                         :acl     {"user1" :read}
                                                         :avus    {}
@@ -303,5 +309,6 @@
     (call process-next-job)
     (is (= (get-queued queue-state-ref)
            #{{:type "remove entry" :path "/tempZone/home/old-user"}
+             {:type "index members" :path multibyte-path}
              {:type "index members" :path "/tempZone/home/user1"}
              {:type "index members" :path "/tempZone/home/user2"}}))))
