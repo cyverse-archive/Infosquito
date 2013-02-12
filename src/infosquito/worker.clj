@@ -9,7 +9,8 @@
             [clojure-commons.file-utils :as file]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es-if :as es])
-  (:import [org.irods.jargon.core.exception FileNotFoundException]
+  (:import [org.irods.jargon.core.exception FileNotFoundException
+                                            JargonException]
            [org.irods.jargon.core.pub.domain ObjStat$SpecColType]))
 
 
@@ -66,7 +67,11 @@
         (irods/list-user-perms irods)
         (filter #(view? (:permissions %)))
         (map :user))
-      (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path})))))
+      (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path}))
+      (catch JargonException e 
+        (ss/throw+ {:type  :permission-denied 
+                    :msg   (.getMessage e) 
+                    :entry entry-path})))))
 
 
 (defn- validate-path
@@ -148,8 +153,6 @@
  
 
 (defn- index-entry-log-missing
-  "Throws:
-     :connection - This is thrown if it fails to connect to iRODS."
   [worker path]
   (ss/try+
     (index-entry worker path (get-mapping-type (:irods worker) path))
@@ -163,6 +166,7 @@
       (index-entry worker collection-path dir-type)
       (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
         (queue/put (:queue worker) (cheshire/encode (mk-job index-members-job collection-path)))))
+    (catch [:type :permission-denied] {:keys [msg entry]} (log/warn "skipping" entry "-" msg))
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
 
@@ -194,6 +198,7 @@
       (catch [:type :beanstalkd-draining] {}
         (log-stop-warn "beanstalkd is not accepting new jobs."))
       (catch [:type :bad-path] {:keys [msg]} (log-stop-warn msg))
+      (catch [:type :permission-denied] {:keys [msg]} (log-stop-warn msg))
       (catch [:type :missing-irods-entry] {}
         (log/debug "Stopping indexing members of" dir-path "because it doesn't exist anymore.")))))
 
