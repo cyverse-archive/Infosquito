@@ -239,7 +239,6 @@
           (let [resp (es/scroll indexer scroll-id (:scroll-ttl worker))]
             (when-not (:_scroll_id resp) (ss/throw+ {:type :index-scroll :resp resp}))
             (when (pos? (count (cerr/hits-from resp)))
-              ; TODO renew reservation
               (doseq [path (remove #(irods/exists? (:irods worker) %) (cerr/ids-from resp))]
                 (queue/put (:queue worker) (cheshire/encode (mk-job remove-entry-job path))))
               (recur (:_scroll_id resp)))))))
@@ -260,7 +259,6 @@
   [worker]
   (log/info "Synchronizing index with iRODS repository")
   (remove-missing-entries worker)
-  ; TODO renew reservation
   (index-members worker (:index-root worker)))
 
 
@@ -289,18 +287,33 @@
      indexer - The client for the Elastic Search platform
      index-root - This is the absolute path into irods indicating the directory whose contents are
        to be indexed.
+     job-ttr - The number of seconds before beanstalk with expire a job reservation.
      scroll-ttl - The amount of time Elastic Search will persist a scan result
      scroll-page-size - The number of scan result entries to return for a single scroll call.
 
    Returns:
      A worker object"
-  [queue-client irods indexer index-root scroll-ttl scroll-page-size]
+  [queue-client irods indexer index-root job-ttr scroll-ttl scroll-page-size]
   {:queue            queue-client
    :irods            irods
    :indexer          indexer
    :index-root       (file/rm-last-slash index-root)
+   :job-ttr          job-ttr
    :scroll-ttl       scroll-ttl
    :scroll-page-size scroll-page-size})
+
+
+(defn- repeatedly-renew
+  [worker job]
+  (let [delay-time-ms  (-> (:job-ttr worker) (* 1000) (/ 2))
+        renew-in-a-bit (fn [] (Thread/sleep delay-time-ms)
+                              (queue/touch (:queue worker) (:id job))
+                              (log/debug "renewed current job reservation"))]
+    (ss/try+
+      (dorun (repeatedly renew-in-a-bit))
+      (catch [:type :connection] {:keys [msg]} (log/error "connection failure." msg))
+      (catch InterruptedException _)
+      (catch Object _ (log/error (:throwable &throw-context) "unexpected error")))))
 
 
 (defn process-next-job
@@ -319,11 +332,13 @@
   [worker]
   (let [queue (:queue worker)]
     (when-let [job (queue/reserve queue)]
+      (let [renewer (future (repeatedly-renew worker job))]
       (ss/try+
         (dispatch-job worker (cheshire/decode (:payload job) true))
+        (future-cancel renewer)
         (queue/delete queue (:id job))
-        (catch Object _
+        (finally
           (ss/try+
+            (when-not (future-cancelled? renewer) (future-cancel renewer))
             (queue/release queue (:id job))
-            (catch Object o))
-          (ss/throw+))))))
+            (catch Object _))))))))

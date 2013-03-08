@@ -149,6 +149,7 @@
 (defn- perform-op
   [queue-state-ref es-state-ref irods-proxy-ctor op]
   (let [proxy-ctor #(irods-proxy-ctor (atom init-irods-repo))
+        job-ttr    120
         irods-cfg  (irods/init "localhost"
                                 "1297"
                                 "user"
@@ -159,11 +160,17 @@
                                 :proxy-ctor proxy-ctor)
         queue      (queue/mk-client #(beanstalk/mk-mock-beanstalk queue-state-ref)
                                     3
-                                    120
+                                    job-ttr
                                     "infosquito")]
     (queue/with-server queue
       (irods-wrapper/with-irods irods-cfg [irods]
-        (op (mk-worker queue irods (->MockIndexer es-state-ref) "/tempZone/home" "10m" 50))))))
+        (op (mk-worker queue 
+                       irods 
+                       (->MockIndexer es-state-ref) 
+                       "/tempZone/home" 
+                       job-ttr 
+                       "10m" 
+                       50))))))
 
 
 (defn- setup
