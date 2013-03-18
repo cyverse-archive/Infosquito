@@ -9,6 +9,7 @@
             [clojure-commons.config :as config]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es :as es]
+            [infosquito.exceptions :as exn]
             [infosquito.irods-facade :as irods-wrapper]
             [infosquito.props :as props]
             [infosquito.worker :as worker])
@@ -68,14 +69,11 @@
   [& body]
   `(ss/try+
      (do ~@body)
-     (catch [:type :connection-refused] {:keys [~'msg]}
-       (log/error "connection failure." ~'msg))
-     (catch [:type :connection] {:keys [~'msg]} 
-       (log/error "connection failure." ~'msg))
+     (catch [:type :connection-refused] {:keys [~'msg]} (log/error "connection failure." ~'msg))
+     (catch [:type :connection] {:keys [~'msg]} (log/error "connection failure." ~'msg))
      (catch [:type :beanstalkd-oom] {:keys []}
-       (log/error "An error occurred. beanstalkd is out of memory and is"
-                  " probably wedged."))
-     (catch Object o# (log/error (:throwable ~'&throw-context) "unexpected error"))))
+       (log/error "An error occurred. beanstalkd is out of memory and is probably wedged."))
+     (catch Object o# (log/error (exn/fmt-throw-context ~'&throw-context)))))
 
 
 (defmacro ^{:private true} with-worker

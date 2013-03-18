@@ -8,7 +8,8 @@
             [clj-jargon.jargon :as irods]
             [clojure-commons.file-utils :as file]
             [clojure-commons.infosquito.work-queue :as queue]
-            [infosquito.es-if :as es])
+            [infosquito.es-if :as es]
+            [infosquito.exceptions :as exn])
   (:import [org.irods.jargon.core.exception FileNotFoundException
                                             JargonException]
            [org.irods.jargon.core.pub.domain ObjStat$SpecColType]))
@@ -313,7 +314,7 @@
       (dorun (repeatedly renew-in-a-bit))
       (catch [:type :connection] {:keys [msg]} (log/error "connection failure." msg))
       (catch InterruptedException _)
-      (catch Object _ (log/error (:throwable &throw-context) "unexpected error")))))
+      (catch Object _ (log/error (exn/fmt-throw-context &throw-context))))))
 
 
 (defn process-next-job
