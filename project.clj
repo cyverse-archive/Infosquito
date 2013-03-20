@@ -3,7 +3,7 @@
   :license {:url "file://LICENSE.txt"}
   :aot [infosquito.core]
   :main infosquito.core
-  :dependencies [[org.clojure/clojure "1.5.0"]
+  :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/tools.cli "0.2.2"]
                  [org.clojure/tools.logging "0.2.4"]
                  [cheshire "5.0.2"]
