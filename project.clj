@@ -9,7 +9,7 @@
                  [cheshire "5.0.2"]
                  [clojurewerkz/elastisch "1.0.2"]
                  [com.github.drsnyder/beanstalk "1.0.0-clj14"]
-                 [org.irods.jargon/jargon-core "3.3.0"]
+                 [org.irods.jargon/jargon-core "3.3.2-SNAPSHOT"]
                  [slingshot "0.10.3"]
                  [org.iplantc/clj-jargon "0.2.4-SNAPSHOT"]
                  [org.iplantc/clojure-commons "1.4.1-SNAPSHOT"]]
