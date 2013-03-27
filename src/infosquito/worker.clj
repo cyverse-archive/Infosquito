@@ -12,6 +12,7 @@
             [infosquito.exceptions :as exn])
   (:import [org.irods.jargon.core.exception FileNotFoundException
                                             JargonException]
+           [org.irods.jargon.core.protovalues FilePermissionEnum]
            [org.irods.jargon.core.pub.domain ObjStat$SpecColType]))
 
 
@@ -45,34 +46,31 @@
 
 ;; IRODS Functions
 
-(defn- get-mapping-type
-  "throws:
-     :missing-irods-entry - This is thrown entry-path doesn't point to a valid
-       entry in iRODS"
-  [irods entry-path]
-  (ss/try+
-    (if (irods/is-file? irods entry-path) file-type dir-type)
-    (catch FileNotFoundException _
-      (ss/throw+ {:type :missing-irods-entry :entry entry-path}))))
-
-
-(defn- get-viewers
+(defn- get-entry
   "throws:
      :missing-irods-entry - This is thrown entry-path doesn't point to a valid entry in iRODS"
   [irods entry-path]
-  (letfn [(view? [perms] (or (:read perms)
-                             (:write perms)
-                             (:own perms)))]
-    (ss/try+
-      (->> entry-path
-        (irods/list-user-perms irods)
-        (filter #(view? (:permissions %)))
-        (map :user))
-      (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path}))
-      (catch JargonException e 
-        (ss/throw+ {:type  :permission-denied 
-                    :msg   (.getMessage e) 
-                    :entry entry-path})))))
+  (ss/try+
+    (let [entry (.getCollectionAndDataObjectListingEntryAtGivenAbsolutePath (:lister irods) 
+                                                                            entry-path)
+          acl   (if (.isDataObject entry) 
+                  (.listPermissionsForDataObject (:dataObjectAO irods) entry-path)
+                  (.listPermissionsForCollection (:collectionAO irods) entry-path))]
+      (doto entry (.setUserFilePermission acl)))
+    (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path}))))
+  
+  
+(defn- get-mapping-type
+  [entry]
+  (if (.isDataObject entry) file-type dir-type))
+
+
+(defn- get-viewers
+  [entry]
+  (let [reader-perms #{FilePermissionEnum/READ FilePermissionEnum/WRITE FilePermissionEnum/OWN}]
+    (->> (.getUserFilePermission entry)
+      (filter #(contains? reader-perms (.getFilePermissionEnum %)))
+      (map #(.getUserName %)))))
 
 
 (defn- validate-path
@@ -111,14 +109,14 @@
 (defn- list-member-collections
   [irods dir-path start-idx]
   (ss/try+
-    (.listCollectionsUnderPath (:lister irods) dir-path start-idx)
+    (.listCollectionsUnderPathWithPermissions (:lister irods) dir-path start-idx)
     (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
 
 
 (defn- list-member-data-objects
   [irods dir-path start-idx]
   (ss/try+
-    (.listDataObjectsUnderPath (:lister irods) dir-path start-idx)
+    (.listDataObjectsUnderPathWithPermissions (:lister irods) dir-path start-idx)
     (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
 
 
@@ -139,34 +137,31 @@
 
 
 (defn- index-entry
-  "Throws:
-     :connection - This is thrown if it fails to connect to iRODS.
-     :missing-irods-entry - This is thrown if the entry doesn't exist, or in the case of a linked 
-       collection, the destination collection doesn't exist."
-  ([worker path type]
+  [worker entry]
+  (let [indexer (:indexer worker)
+        path    (.getFormattedAbsolutePath entry)
+        type    (get-mapping-type entry)
+        id      (mk-index-id path)
+        doc     (mk-index-doc path (get-viewers entry))]
     (log/trace "indexing" path)
     (log-when-es-failed "index entry"
-                        (es/put (:indexer worker) 
-                                index 
-                                type 
-                                (mk-index-id path) 
-                                (mk-index-doc path (get-viewers (:irods worker) path))))))
+                        (es/put indexer index type id doc))))
  
 
-(defn- index-entry-log-missing
+(defn- index-entry-path
   [worker path]
   (ss/try+
-    (index-entry worker path (get-mapping-type (:irods worker) path))
+    (index-entry worker (get-entry (:irods worker) path))
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
 
 (defn- index-collection
   [worker collection]
   (ss/try+
-    (let [collection-path (.getFormattedAbsolutePath collection)]
-      (index-entry worker collection-path dir-type)
-      (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
-        (queue/put (:queue worker) (cheshire/encode (mk-job index-members-job collection-path)))))
+    (index-entry worker collection)
+    (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
+      (queue/put (:queue worker) 
+                 (cheshire/encode (mk-job index-members-job (.getFormattedAbsolutePath collection)))))
     (catch [:type :permission-denied] {:keys [msg entry]} (log/warn "skipping" entry "-" msg))
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
@@ -174,7 +169,7 @@
 (defn- index-data-object
   [worker data-object]
   (ss/try+
-    (index-entry worker (.getFormattedAbsolutePath data-object) file-type)
+    (index-entry worker data-object)
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
 
@@ -272,7 +267,7 @@
   [worker job]
   (let [type (:type job)]
     (condp = type
-      index-entry-job   (index-entry-log-missing worker (:path job))
+      index-entry-job   (index-entry-path worker (:path job))
       index-members-job (index-members worker (:path job))
       remove-entry-job  (remove-entry worker (:path job))
       sync-job          (sync-index worker)
