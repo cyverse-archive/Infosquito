@@ -65,14 +65,6 @@
   (if (.isDataObject entry) file-type dir-type))
 
 
-(defn- get-viewers
-  [entry]
-  (let [reader-perms #{FilePermissionEnum/READ FilePermissionEnum/WRITE FilePermissionEnum/OWN}]
-    (->> (.getUserFilePermission entry)
-      (filter #(contains? reader-perms (.getFilePermissionEnum %)))
-      (map #(.getUserName %)))))
-
-
 (defn- validate-path
   [abs-path]
   (ss/try+
@@ -124,13 +116,26 @@
 
 
 (defn- mk-index-doc
-  [path viewers]
-  {:name (file/basename path) :viewers viewers})
+  [entry]
+  (letfn [(fmt-perm      [perm] (condp = perm
+                                  FilePermissionEnum/READ  "read"
+                                  FilePermissionEnum/WRITE "write"
+                                  FilePermissionEnum/OWN   "own"
+                                                           nil))
+          (fmt-acl-entry [acl-entry] {:name       (.getUserName acl-entry)
+                                      :zone       (.getUserZone acl-entry)
+                                      :permission (fmt-perm (.getFilePermissionEnum acl-entry))})]
+    {:name        (.getNodeLabelDisplayValue entry) 
+     :parent_path (.getParentPath entry)
+     :creator     {:name (.getOwnerName entry) :zone (.getOwnerZone entry)}
+     :create_date (.getTime (.getCreatedAt entry))
+     :modify_date (.getTime (.getModifiedAt entry))
+     :acl         (map fmt-acl-entry (.getUserFilePermission entry))}))
 
 
 (defn- mk-index-id
-  [entry-path]
-  (file/rm-last-slash entry-path))
+  [path]
+  (file/rm-last-slash path))
 
 
 ;; Work Logic
@@ -138,12 +143,11 @@
 
 (defn- index-entry
   [worker entry]
+  (log/trace "indexing" (.getFormattedAbsolutePath entry))
   (let [indexer (:indexer worker)
-        path    (.getFormattedAbsolutePath entry)
         type    (get-mapping-type entry)
-        id      (mk-index-id path)
-        doc     (mk-index-doc path (get-viewers entry))]
-    (log/trace "indexing" path)
+        id      (mk-index-id (.getFormattedAbsolutePath entry))
+        doc     (mk-index-doc entry)]
     (log-when-es-failed "index entry"
                         (es/put indexer index type id doc))))
  

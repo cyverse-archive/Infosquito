@@ -12,6 +12,12 @@
             [infosquito.irods-facade :as irods-wrapper]))
 
 
+(def ^{:private true} zone "tempZone")
+
+(def ^{:private true} user1 ["user1" zone])
+
+(def ^{:private true} user2 ["user2" zone])
+
 (def ^{:private true} too-long-dir-name
   "/tempZone/home/user2/trash/home-rods-wregglej-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.183209331-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 
@@ -20,113 +26,206 @@
 (def ^{:private true} multibyte-path (str "/tempZone/home/" multibyte-user-name))
 
 (def ^{:private true} init-irods-repo
-  {:users                                              #{"user1" "user2" multibyte-user-name}
+  {:users                                              #{user1 user2 [multibyte-user-name zone]}
    :groups                                             {}
-   "/tempZone"                                         {:type :normal-dir
-                                                        :acl  {}
-                                                        :avus {}}
-   "/tempZone/home"                                    {:type :normal-dir
-                                                        :acl  {"user1" :read
-                                                               "user2" :read}
-                                                        :avus {}}
-   multibyte-path                                      {:type :normal-dir
-                                                        :acl  {multibyte-user-name :own}
-                                                        :avus {}}
-   "/tempZone/home/user1"                              {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-file"                {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/unreadable-file"              {:type    :file
-                                                        :acl     {}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/readable-dir"                 {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir1"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir2"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir3"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir4"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir5"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir6"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir7"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir8"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir9"            {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/dir10"           {:type :normal-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/readable-dir/file1"           {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/readable-dir/file2"           {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/readable-dir/file3"           {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/readable-dir/file4"           {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/readable-dir/file5"           {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/readable-dir/file6"           {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/unreadable-dir"               {:type :normal-dir
-                                                        :acl  {}
-                                                        :avus {}}
-   "/tempZone/home/user1/unreadable-dir/readable-file" {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user1/linked-dir"                   {:type :linked-dir
-                                                        :acl  {"user1" :read}
-                                                        :avus {}}
-   "/tempZone/home/user1/linked-dir/readable-file"     {:type    :file
-                                                        :acl     {"user1" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user2"                              {:type    :normal-dir
-                                                        :acl     {"user2" :read}
-                                                        :avus    {}}
-   "/tempZone/home/user2/readable-file"                {:type    :file
-                                                        :acl     {"user2" :read}
-                                                        :avus    {}
-                                                        :content ""}
-   "/tempZone/home/user2/trash"                        {:type :normal-dir
-                                                        :acl  {}
-                                                        :avus {}}
-   too-long-dir-name                                   {:type :normal-dir
-                                                        :acl  {}
-                                                        :avus {}}})
+   "/tempZone"                                         {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {}
+                                                        :avus        {}}
+   "/tempZone/home"                                    {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read user2 :read}
+                                                        :avus        {}}
+   multibyte-path                                      {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {[multibyte-user-name zone] 
+                                                                      :own}
+                                                        :avus        {}}
+   "/tempZone/home/user1"                              {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-file"                {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/unreadable-file"              {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/readable-dir"                 {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir1"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir2"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir3"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir4"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir5"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir6"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {"user1" :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir7"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir8"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir9"            {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/dir10"           {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/readable-dir/file1"           {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/readable-dir/file2"           {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/readable-dir/file3"           {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/readable-dir/file4"           {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/readable-dir/file5"           {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/readable-dir/file6"           {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/unreadable-dir"               {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {}
+                                                        :avus        {}}
+   "/tempZone/home/user1/unreadable-dir/readable-file" {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user1/linked-dir"                   {:type        :linked-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user1/linked-dir/readable-file"     {:type        :file
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user1 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user2"                              {:type        :normal-dir
+                                                        :creator     user1
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user2 :read}
+                                                        :avus        {}}
+   "/tempZone/home/user2/readable-file"                {:type        :file
+                                                        :creator     user2
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {user2 :read}
+                                                        :avus        {}
+                                                        :content     ""}
+   "/tempZone/home/user2/trash"                        {:type        :normal-dir
+                                                        :creator     user2
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {}
+                                                        :avus        {}}
+   too-long-dir-name                                   {:type        :normal-dir
+                                                        :creator     user2
+                                                        :create-time 0
+                                                        :modify-time 0
+                                                        :acl         {}
+                                                        :avus        {}}})
 
 
 (defn- mk-oom-proxy
@@ -220,14 +319,28 @@
       (call process-next-job)
       (is (not (beanstalk/jobs? @queue-state-ref)))
       (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/readable-file")
-             {:name "readable-file" :viewers ["user1"]}))))
+             {:name        "readable-file"
+              :parent_path "/tempZone/home/user1"
+              :creator     {:name "user1" :zone zone}
+              :create_date 0
+              :modify_date 0
+              :acl         [{:name       "user1" 
+                             :zone       zone 
+                             :permission "read"}]}))))
   (testing "index readable folder"
     (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref
                       {:type "index entry" :path "/tempZone/home/user1/readable-dir"})
       (call process-next-job)
       (is (= (get-doc @es-state-ref "iplant" "folder" "/tempZone/home/user1/readable-dir")
-             {:name "readable-dir" :viewers ["user1"]}))))
+             {:name        "readable-dir"
+              :parent_path "/tempZone/home/user1"
+              :creator     {:name "user1" :zone zone}
+              :create_date 0
+              :modify_date 0
+              :acl         [{:name       "user1"
+                             :zone       zone
+                             :permission "read"}]}))))
   (testing "index unreadable entry"
     (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref
@@ -235,16 +348,26 @@
                        :path "/tempZone/home/user1/unreadable-file"})
       (call process-next-job)
       (is (= (get-doc @es-state-ref "iplant" "file" "/tempZone/home/user1/unreadable-file")
-             {:name "unreadable-file" :viewers []}))))
+             {:name        "unreadable-file"
+              :parent_path "/tempZone/home/user1"
+              :creator     {:name "user1" :zone zone}
+              :create_date 0
+              :modify_date 0
+              :acl         []}))))
   (testing "index multiple viewers"
     (let [[queue-state-ref es-state-ref call] (setup)]
       (populate-queue queue-state-ref {:type "index entry" :path "/tempZone/home"})
       (call process-next-job)
       (is (= (-> @es-state-ref
                (get-doc "iplant" "folder" "/tempZone/home")
-               :viewers
+               :acl
                set)
-             #{"user1" "user2"}))))
+             #{{:name       "user1" 
+                :zone       zone
+                :permission "read"}
+               {:name       "user2"
+                :zone       zone
+                :permission "read"}}))))
   (testing "missing entry"
     (let [[queue-state-ref _ call] (setup)
           thrown?                  (ss/try+
