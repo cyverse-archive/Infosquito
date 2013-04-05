@@ -5,8 +5,8 @@
   :main infosquito.core
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/tools.cli "0.2.2"]
-                 [org.clojure/tools.logging "0.2.4"]
-                 [cheshire "5.0.2"]
+                 [org.clojure/tools.logging "0.2.6"]
+                 [cheshire "5.1.0"]
                  [clojurewerkz/elastisch "1.0.2"]
                  [com.github.drsnyder/beanstalk "1.0.0-clj14"]
                  [org.irods.jargon/jargon-core "3.3.2-SNAPSHOT"]
