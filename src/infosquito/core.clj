@@ -11,6 +11,7 @@
             [infosquito.es :as es]
             [infosquito.exceptions :as exn]
             [infosquito.irods-facade :as irods-wrapper]
+            [infosquito.irods-utils :as irods-utils]
             [infosquito.props :as props]
             [infosquito.worker :as worker])
   (:import [java.util Properties]))
@@ -18,7 +19,7 @@
 
 (defn- update-props
   [load-props props]
-    (let [props-ref (ref props 
+    (let [props-ref (ref props
                          :validator (fn [p] (if (empty? p)
                                               true
                                               (props/validate p #(log/error %&)))))]
@@ -27,15 +28,15 @@
         (catch Object _
           (log/error "Failed to load configuration parameters.")))
       (when (.isEmpty @props-ref)
-        (ss/throw+ {:type :cfg-problem 
+        (ss/throw+ {:type :cfg-problem
                     :msg  "Don't have any configuration parameters."}))
       (when-not (= props @props-ref) (config/log-config props-ref))
       @props-ref))
-        
+
 
 (defn- ->queue
   [props]
-  (letfn [(ctor [] (beanstalk/new-beanstalk (props/get-beanstalk-host props) 
+  (letfn [(ctor [] (beanstalk/new-beanstalk (props/get-beanstalk-host props)
                                             (props/get-beanstalk-port props)))]
     (queue/mk-client ctor
                      1
@@ -52,7 +53,7 @@
                     (props/get-job-ttr props)
                     (props/get-es-scroll-ttl props)
                     (props/get-es-scroll-page-size props)))
- 
+
 
 (defn- init-irods
   [props]
@@ -81,12 +82,13 @@
   `(trap-exceptions!
      (let [queue#     (->queue ~props)
            irods-cfg# (init-irods ~props)]
-       (queue/with-server queue# 
+       (queue/with-server queue#
          (irods-wrapper/with-irods irods-cfg# [irods#]
+           (irods-utils/define-specific-queries irods#)
            (let [~worker-sym (->worker ~props queue# irods#)]
              (do ~@body)))))))
 
-  
+
 (defn- process-jobs
   [load-props]
   (loop [old-props (Properties.)]

@@ -10,3 +10,5 @@ pom.xml
 /.project
 /.settings
 /bin
+.dir-locals.el
+*.eld
