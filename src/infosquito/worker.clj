@@ -9,7 +9,8 @@
             [clojure-commons.file-utils :as file]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es-if :as es]
-            [infosquito.exceptions :as exn])
+            [infosquito.exceptions :as exn]
+            [infosquito.irods-utils :as irods-utils])
   (:import [org.irods.jargon.core.exception FileNotFoundException
                                             JargonException]
            [org.irods.jargon.core.protovalues FilePermissionEnum]
@@ -51,15 +52,15 @@
      :missing-irods-entry - This is thrown entry-path doesn't point to a valid entry in iRODS"
   [irods entry-path]
   (ss/try+
-    (let [entry (.getCollectionAndDataObjectListingEntryAtGivenAbsolutePath (:lister irods) 
+    (let [entry (.getCollectionAndDataObjectListingEntryAtGivenAbsolutePath (:lister irods)
                                                                             entry-path)
-          acl   (if (.isDataObject entry) 
+          acl   (if (.isDataObject entry)
                   (.listPermissionsForDataObject (:dataObjectAO irods) entry-path)
                   (.listPermissionsForCollection (:collectionAO irods) entry-path))]
       (doto entry (.setUserFilePermission acl)))
     (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry entry-path}))))
-  
-  
+
+
 (defn- get-mapping-type
   [entry]
   (if (.isDataObject entry) file-type dir-type))
@@ -82,35 +83,15 @@
                   :dir  full-path
                   :msg  "The directory path is too long"}))))
 
-
-(defn- visit-entries
-  [list-page visit]
-  (letfn [(visit' [_ entry] (let [path (.getFormattedAbsolutePath entry)]
-                              (ss/try+
-                                (validate-path path)
-                                (visit entry)
-                                (catch [:type :bad-path] {:keys [msg]}
-                                  (log/warn "skipping" path "-" msg)))
-                              entry))]
-	  (loop [start-idx 0]
-     (when-let [last-entry (reduce visit' nil (list-page start-idx))]
-       (when-not (.isLastResult last-entry)
-         (recur (.getCount last-entry)))))))
-
-
-(defn- list-member-collections
-  [irods dir-path start-idx]
-  (ss/try+
-    (.listCollectionsUnderPathWithPermissions (:lister irods) dir-path start-idx)
-    (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
-
-
-(defn- list-member-data-objects
-  [irods dir-path start-idx]
-  (ss/try+
-    (.listDataObjectsUnderPathWithPermissions (:lister irods) dir-path start-idx)
-    (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))))
-
+(defn- visit-listing-entry
+  [visit entry]
+  (let [path (.getFormattedAbsolutePath entry)]
+    (ss/try+
+     (validate-path path)
+     (visit entry)
+     (catch [:type :bad-path] {:keys [msg]}
+       (log/warn "skipping" path "-" msg)))
+    entry))
 
 ;; Indexer Functions
 
@@ -125,7 +106,7 @@
           (fmt-acl-entry [acl-entry] {:name       (.getUserName acl-entry)
                                       :zone       (.getUserZone acl-entry)
                                       :permission (fmt-perm (.getFilePermissionEnum acl-entry))})]
-    {:name        (.getNodeLabelDisplayValue entry) 
+    {:name        (.getNodeLabelDisplayValue entry)
      :parent_path (.getParentPath entry)
      :creator     {:name (.getOwnerName entry) :zone (.getOwnerZone entry)}
      :create_date (.getTime (.getCreatedAt entry))
@@ -150,7 +131,7 @@
         doc     (mk-index-doc entry)]
     (log-when-es-failed "index entry"
                         (es/put indexer index type id doc))))
- 
+
 
 (defn- index-entry-path
   [worker path]
@@ -164,7 +145,7 @@
   (ss/try+
     (index-entry worker collection)
     (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
-      (queue/put (:queue worker) 
+      (queue/put (:queue worker)
                  (cheshire/encode (mk-job index-members-job (.getFormattedAbsolutePath collection)))))
     (catch [:type :permission-denied] {:keys [msg entry]} (log/warn "skipping" entry "-" msg))
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
@@ -190,10 +171,10 @@
     (ss/try+
       (let [irods (:irods worker)]
         (validate-path dir-path)
-        (visit-entries (partial list-member-collections irods dir-path)
-                       (partial index-collection worker))
-        (visit-entries (partial list-member-data-objects irods dir-path)
-                       (partial index-data-object worker)))
+        (dorun (map (partial visit-listing-entry (partial index-collection worker))
+                    (irods-utils/list-subcollections irods dir-path)))
+        (dorun (map (partial visit-listing-entry (partial index-data-object worker))
+                    (irods-utils/list-data-objects irods dir-path))))
       (catch [:type :beanstalkd-oom] {} (log-stop-warn "beanstalkd is out of memory."))
       (catch [:type :beanstalkd-draining] {}
         (log-stop-warn "beanstalkd is not accepting new jobs."))
