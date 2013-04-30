@@ -1,5 +1,6 @@
 (ns infosquito.irods-utils
-  (:require [clojure-commons.file-utils :as ft])
+  (:require [clojure-commons.file-utils :as ft]
+            [clojure.string :as string])
   (:import [org.irods.jargon.core.exception DataNotFoundException JargonException]
            [org.irods.jargon.core.protovalues FilePermissionEnum UserTypeEnum]
            [org.irods.jargon.core.pub.domain SpecificQueryDefinition UserFilePermission]
@@ -23,15 +24,17 @@
         "OFFSET ?")
 
    "data_objects_with_permissions"
-   (str "SELECT c.coll_name, d.data_name, d.create_ts, d.modify_ts, d.data_id, "
-        "d.data_size, d.data_owner_name, u.user_name, u.zone_name, a.access_type_id, "
-        "u.user_id, u.user_type_name "
-        "FROM r_data_main d "
-        "JOIN r_coll_main c ON d.coll_id = c.coll_id "
-        "JOIN r_objt_access a ON d.data_id = a.object_id "
-        "JOIN r_user_main u ON a.user_id = u.user_id "
+   (str "SELECT s.coll_name, s.data_name, s.create_ts, s.modify_ts, s.data_id, s.data_size, "
+        "s.data_owner_name, u.user_name, u.zone_name, a.access_type_id, u.user_id, "
+        "u.user_type_name FROM "
+        "(SELECT c.coll_name, d.data_name, d.create_ts, d.modify_ts, d.data_id, d.data_size, "
+        "d.data_owner_name "
+        "FROM r_coll_main c "
+        "JOIN r_data_main d ON c.coll_id = d.coll_id "
         "WHERE c.coll_name = ? "
-        "ORDER BY c.coll_name, d.data_name "
+        "ORDER BY d.data_name) s "
+        "JOIN r_objt_access a ON s.data_id = a.object_id "
+        "JOIN r_user_main u ON a.user_id = u.user_id "
         "LIMIT ? "
         "OFFSET ?")})
 
