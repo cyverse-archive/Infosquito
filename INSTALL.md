@@ -48,18 +48,18 @@ installed using this RPM package.
 
 ### Installation
 
-{code}
+```
 $ sudo yum install elasticsearch
-{code}
+```
 
 ### Configuration
 
 The only configurable setting for this elasticsearch installation is the port
 number that elasticsearch listens to for incoming connections.
 
-{code}
+```
 elasticsearch.app.listen-port = 9200
-{code}
+```
 
 ## Install infosquito
 
@@ -68,13 +68,13 @@ installation of beanstalkd and elasticsearch.
 
 ### Installation
 
-{code}
+```
 $ sudo yum install infosquito
-{code}
+```
 
 ### Configulon
 
-{code}
+```
 # Beanstalk settings
 infosquito.beanstalk.host = somehost.example.org
 infosquito.beanstalk.port = 11300
@@ -101,4 +101,4 @@ infosquito.irods.zone             = someotherpassword
 # Miscellaneous settings
 infosquito.num-instances = 2
 infosquito.retry-delay   = 10000
-{code}
+```
