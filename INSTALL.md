@@ -23,18 +23,18 @@ using this RPM package.
 
 ### Installation
 
-{code}
+```
 $ sudo yum install iplant-beanstalk
-{code}
+```
 
 ### Configuration
 
 The only configrable setting for this beanstalkd installation is the port number
 that beanstalkd listens to for incoming connections.
 
-{code}
+```
 beanstalk.app.listen-port = 11300
-{code}
+```
 
 ## Install Elasticsearch
 
