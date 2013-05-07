@@ -259,9 +259,9 @@ infosquito.retry-delay   = 10000
 
 ### Publishing a Sync Task
 
-Infosqito won't start to synchronize the index until it receives a
-task in its Beanstalk queue to tell it to do so. A utility has been provided in
-the `scm` repository that will publish this task. Here's the usage:
+Infosquito won't start to synchronize the index until it receives a task in its
+Beanstalk queue to tell it to do so. A utility has been provided in the `scm`
+repository that will publish this task. Here's the usage:
 
 ```
 sync-index.sh host port
