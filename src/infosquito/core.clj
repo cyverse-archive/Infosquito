@@ -6,12 +6,12 @@
             [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
+            [clj-jargon.lazy-listings :as lazyrods]
             [clojure-commons.config :as config]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es :as es]
             [infosquito.exceptions :as exn]
             [infosquito.irods-facade :as irods-wrapper]
-            [infosquito.irods-utils :as irods-utils]
             [infosquito.props :as props]
             [infosquito.worker :as worker])
   (:import [java.util Properties]))
@@ -84,7 +84,7 @@
            irods-cfg# (init-irods ~props)]
        (queue/with-server queue#
          (irods-wrapper/with-irods irods-cfg# [irods#]
-           (irods-utils/define-specific-queries irods#)
+           (lazyrods/define-specific-queries irods#)
            (let [~worker-sym (->worker ~props queue# irods#)]
              (do ~@body)))))))
 

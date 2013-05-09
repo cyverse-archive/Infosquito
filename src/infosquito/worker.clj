@@ -6,11 +6,11 @@
             [clojurewerkz.elastisch.rest.response :as cerr]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
+            [clj-jargon.lazy-listings :as lazyrods]
             [clojure-commons.file-utils :as file]
             [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es-if :as es]
-            [infosquito.exceptions :as exn]
-            [infosquito.irods-utils :as irods-utils])
+            [infosquito.exceptions :as exn])
   (:import [org.irods.jargon.core.exception FileNotFoundException
                                             JargonException]
            [org.irods.jargon.core.protovalues FilePermissionEnum]
@@ -172,9 +172,9 @@
       (let [irods (:irods worker)]
         (validate-path dir-path)
         (dorun (map (partial visit-listing-entry (partial index-collection worker))
-                    (irods-utils/list-subcollections irods dir-path)))
+                    (lazyrods/list-subdirs-in irods dir-path) (range)))
         (dorun (map (partial visit-listing-entry (partial index-data-object worker))
-                    (irods-utils/list-data-objects irods dir-path))))
+                    (lazyrods/list-files-in irods dir-path) (range))))
       (catch [:type :beanstalkd-oom] {} (log-stop-warn "beanstalkd is out of memory."))
       (catch [:type :beanstalkd-draining] {}
         (log-stop-warn "beanstalkd is not accepting new jobs."))
