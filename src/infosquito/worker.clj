@@ -145,8 +145,9 @@
   (ss/try+
     (index-entry worker collection)
     (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
-      (queue/put (:queue worker)
-                 (cheshire/encode (mk-job index-members-job (.getFormattedAbsolutePath collection)))))
+      (queue/put
+       (:queue worker)
+       (cheshire/encode (mk-job index-members-job (.getFormattedAbsolutePath collection)))))
     (catch [:type :permission-denied] {:keys [msg entry]} (log/warn "skipping" entry "-" msg))
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
@@ -157,6 +158,20 @@
     (index-entry worker data-object)
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
+(defn- try-listing
+  [get-listing dir-path]
+  (ss/try+
+   (get-listing dir-path)
+   (catch FileNotFoundException _ (ss/throw+ {:type :missing-irods-entry :entry dir-path}))
+   (catch JargonException _ (ss/throw+ {:type :listing-error :entry dir-path}))))
+
+(defn- list-subdirs-in
+  [irods dir-path]
+  (try-listing (partial lazyrods/list-subdirs-in irods) dir-path))
+
+(defn- list-files-in
+  [irods dir-path]
+  (try-listing (partial lazyrods/list-files-in irods) dir-path))
 
 (defn- index-members
   "Throws:
@@ -172,9 +187,9 @@
       (let [irods (:irods worker)]
         (validate-path dir-path)
         (dorun (map (partial visit-listing-entry (partial index-collection worker))
-                    (lazyrods/list-subdirs-in irods dir-path) (range)))
+                    (list-subdirs-in irods dir-path)))
         (dorun (map (partial visit-listing-entry (partial index-data-object worker))
-                    (lazyrods/list-files-in irods dir-path) (range))))
+                    (list-files-in irods dir-path))))
       (catch [:type :beanstalkd-oom] {} (log-stop-warn "beanstalkd is out of memory."))
       (catch [:type :beanstalkd-draining] {}
         (log-stop-warn "beanstalkd is not accepting new jobs."))
@@ -271,17 +286,19 @@
      job-ttr - The number of seconds before beanstalk with expire a job reservation.
      scroll-ttl - The amount of time Elastic Search will persist a scan result
      scroll-page-size - The number of scan result entries to return for a single scroll call.
+     retry-delay - the number of seconds to wait before retrying a task.
 
    Returns:
      A worker object"
-  [queue-client irods indexer index-root job-ttr scroll-ttl scroll-page-size]
+  [queue-client irods indexer index-root job-ttr scroll-ttl scroll-page-size retry-delay]
   {:queue            queue-client
    :irods            irods
    :indexer          indexer
    :index-root       (file/rm-last-slash index-root)
    :job-ttr          job-ttr
    :scroll-ttl       scroll-ttl
-   :scroll-page-size scroll-page-size})
+   :scroll-page-size scroll-page-size
+   :retry-delay      retry-delay})
 
 
 (defn- repeatedly-renew
@@ -318,6 +335,11 @@
         (dispatch-job worker (cheshire/decode (:payload job) true))
         (future-cancel renewer)
         (queue/delete queue (:id job))
+        (catch [:type :listing-error] {:keys [dir-path]}
+          (log/error "error encountered while obtaining listings for" dir-path
+                     "- moving directory task to the end of the queue")
+          (queue/delete queue (:id job))
+          (queue/put queue (:payload job) :delay (:retry-delay worker)))
         (finally
           (ss/try+
             (when-not (future-cancelled? renewer) (future-cancel renewer))

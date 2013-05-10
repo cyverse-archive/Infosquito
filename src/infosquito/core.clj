@@ -52,7 +52,8 @@
                     (props/get-irods-index-root props)
                     (props/get-job-ttr props)
                     (props/get-es-scroll-ttl props)
-                    (props/get-es-scroll-page-size props)))
+                    (props/get-es-scroll-page-size props)
+                    (/ (props/get-retry-delay props) 1000)))
 
 
 (defn- init-irods
