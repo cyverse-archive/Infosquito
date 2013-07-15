@@ -4,11 +4,13 @@
   :aot [infosquito.core]
   :main infosquito.core
   :dependencies [[org.clojure/clojure "1.5.1"]
+                 [org.clojure/java.jdbc "0.2.3"]
                  [org.clojure/tools.cli "0.2.2"]
                  [org.clojure/tools.logging "0.2.6"]
                  [cheshire "5.1.0"]
                  [clojurewerkz/elastisch "1.0.2"]
                  [com.github.drsnyder/beanstalk "1.0.0-clj14"]
+                 [postgresql "9.0-801.jdbc4"]
                  [slingshot "0.10.3"]
                  [org.iplantc/clj-jargon "0.2.5-SNAPSHOT"]
                  [org.iplantc/clojure-commons "1.4.1-SNAPSHOT"]]
