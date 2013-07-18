@@ -7,8 +7,6 @@
 ; TODO describe a collection map
 ; TODO describe a permission map
 
-; TODO handle linked collections
-
 (defn- mk-acl-query
   [entry-id]
   (str "SELECT u.user_name  \"name\", 
@@ -22,12 +20,12 @@
 
 (defn- mk-colls-query
   [coll-base]
-  (str "SELECT coll_id          id,
-               coll_name        path,
-               parent_coll_name parent_path,
-               coll_type        \"type\", 
-               create_ts        \"create_time\", 
-               modify_ts        \"modity_time\"
+  (str "SELECT coll_id                                         id,
+               REPLACE(coll_name, parent_coll_name || '/', '') \"name\",
+               parent_coll_name                                \"parent-path\",
+               create_ts                                       \"create-time\", 
+               modify_ts                                       \"modity-time\",
+               coll_type                                       \"type\"
           FROM r_coll_main 
           WHERE coll_name LIKE '" coll-base "/%'"))
 
@@ -36,14 +34,33 @@
   [coll-base]
   (str "SELECT DISTINCT d.data_id   \"id\",
                         d.data_name \"name\",
-                        c.coll_name \"parent_path\",
-                        d.data_size \"size\",
-                        d.create_ts \"create_time\",
-                        d.modify_ts \"modify_time\"
+                        c.coll_name \"parent-path\",
+                        d.create_ts \"create-time\",
+                        d.modify_ts \"modify-time\"
           FROM r_data_main AS d LEFT JOIN r_coll_main AS c ON d.coll_id = c.coll_id
           WHERE c.coll_name LIKE '" coll-base "/%'"))
   
 
+(defn- mk-linked-data-objs-query
+  [coll-base]
+  (str "SELECT c.coll_id                                       \"id\",
+               REPLACE(coll_name, parent_coll_name || '/', '') \"name\",
+               c.parent_coll_name                              \"parent-path\",
+               d.\"create-time\"                               \"create-time\",
+               d.\"modify-time\"                               \"modify-time\"
+          FROM r_coll_main AS c 
+            INNER JOIN (" (mk-data-objs-query coll-base) ") AS d 
+              ON c.coll_info1 = (d.\"parent-path\" || '/' || d.name)
+          WHERE c.coll_name LIKE '" coll-base "/%' AND c.coll_type = 'linkPoint'"))
+  
+  
+(defn- mk-is-link-coll-query
+  [link]
+  (str "SELECT COUNT(*) > 0 
+          FROM r_coll_main 
+          WHERE coll_name IN (SELECT coll_info1 FROM r_coll_main WHERE coll_name = '" link "')"))
+
+  
 (defn- query-paged
   [cfg sql-query result-receiver]
   (sql/transaction (sql/with-query-results* 
@@ -65,7 +82,18 @@
   [cfg data-obj-receiver]
   (query-paged cfg (mk-data-objs-query (:collection-base cfg)) data-obj-receiver))
  
- 
+
+(defn- get-linked-data-objs-wo-acls
+  [cfg data-obj-receiver]
+  (query-paged cfg (mk-linked-data-objs-query (:collection-base cfg)) data-obj-receiver))
+
+
+(defn- is-link-coll?
+  [link-path]
+  (sql/with-query-results result [(mk-is-link-coll-query link-path)]
+    (first result)))
+
+  
 (defn- attach-acls
   [cfg entry-provider entry-receiver]
   (letfn [(attach-acl [entry] (assoc entry :acl (get-acl cfg (:id entry) (partial mapv identity))))]    
@@ -114,7 +142,9 @@
    Returns:
      It returns whatever the continuation returns."
   [cfg coll-receiver]
-  (attach-acls cfg (partial get-colls-wo-acls cfg) coll-receiver))
+  (letfn [(keep? [coll] (or (empty? (:type coll))
+                            (and (= (:type coll) "linkPoint") (is-link-coll? (:name coll)))))] 
+    (attach-acls cfg (partial get-colls-wo-acls cfg) (comp coll-receiver (partial filter keep?)))))
 
 
 (defn get-data-objects
@@ -124,12 +154,11 @@
 
    Parameters:
      cfg - the configuration mapping
-     obj-receiver - The continuation that will receive the stream of data objects
-
-   Returns:
-     It returns whatever the continuation returns."
+     obj-receiver - The continuation that will receive the stream of data objects"
   [cfg obj-receiver]
-  (attach-acls cfg (partial get-data-objs-wo-acls cfg) obj-receiver)) 
+  (attach-acls cfg (partial get-data-objs-wo-acls cfg) obj-receiver)
+  (attach-acls cfg (partial get-linked-data-objs-wo-acls cfg) obj-receiver)
+  nil)
 
 
 ; This is just a test function
