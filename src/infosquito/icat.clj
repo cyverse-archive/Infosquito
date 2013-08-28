@@ -1,16 +1,23 @@
 (ns infosquito.icat
   (:use clojure.pprint)
-  (:require [clojure.java.jdbc :as sql]))
+  (:require [clojure.java.jdbc :as sql]
+            [clojure-commons.file-utils :as file]
+            [infosquito.es :as es]
+            [infosquito.es-if :as es-if]))
 
 
 ; TODO describe cfg and conn-params maps
 ; TODO describe a collection map
 ; TODO describe a permission map
 
+(def ^{:private true} index "iplant")
+(def ^{:private true} file-type "file")
+(def ^{:private true} dir-type "folder")
+
 (defn- mk-acl-query
   [entry-id]
-  (str "SELECT u.user_name  \"name\", 
-               u.zone_name  \"zone\", 
+  (str "SELECT u.user_name  \"name\",
+               u.zone_name  \"zone\",
                t.token_name \"permission\"
           FROM r_objt_access AS a
             LEFT JOIN r_user_main AS u ON a.user_id = u.user_id
@@ -23,10 +30,10 @@
   (str "SELECT coll_id                                         id,
                REPLACE(coll_name, parent_coll_name || '/', '') \"name\",
                parent_coll_name                                \"parent-path\",
-               create_ts                                       \"create-time\", 
-               modify_ts                                       \"modity-time\",
+               create_ts                                       \"create-time\",
+               modify_ts                                       \"modify-time\",
                coll_type                                       \"type\"
-          FROM r_coll_main 
+          FROM r_coll_main
           WHERE coll_name LIKE '" coll-base "/%'"))
 
 
@@ -39,7 +46,7 @@
                         d.modify_ts \"modify-time\"
           FROM r_data_main AS d LEFT JOIN r_coll_main AS c ON d.coll_id = c.coll_id
           WHERE c.coll_name LIKE '" coll-base "/%'"))
-  
+
 
 (defn- mk-linked-data-objs-query
   [coll-base]
@@ -48,23 +55,23 @@
                c.parent_coll_name                              \"parent-path\",
                d.\"create-time\"                               \"create-time\",
                d.\"modify-time\"                               \"modify-time\"
-          FROM r_coll_main AS c 
-            INNER JOIN (" (mk-data-objs-query coll-base) ") AS d 
+          FROM r_coll_main AS c
+            INNER JOIN (" (mk-data-objs-query coll-base) ") AS d
               ON c.coll_info1 = (d.\"parent-path\" || '/' || d.name)
           WHERE c.coll_name LIKE '" coll-base "/%' AND c.coll_type = 'linkPoint'"))
-  
-  
+
+
 (defn- mk-is-link-coll-query
   [link]
-  (str "SELECT COUNT(*) > 0 
-          FROM r_coll_main 
+  (str "SELECT COUNT(*) > 0
+          FROM r_coll_main
           WHERE coll_name IN (SELECT coll_info1 FROM r_coll_main WHERE coll_name = '" link "')"))
 
-  
+
 (defn- query-paged
   [cfg sql-query result-receiver]
-  (sql/transaction (sql/with-query-results* 
-                     [{:fetch-size (:result-page-size cfg)} sql-query] 
+  (sql/transaction (sql/with-query-results*
+                     [{:fetch-size (:result-page-size cfg)} sql-query]
                      result-receiver)))
 
 
@@ -76,12 +83,12 @@
 (defn- get-colls-wo-acls
   [cfg coll-receiver]
   (query-paged cfg (mk-colls-query (:collection-base cfg)) coll-receiver))
-  
+
 
 (defn- get-data-objs-wo-acls
   [cfg data-obj-receiver]
   (query-paged cfg (mk-data-objs-query (:collection-base cfg)) data-obj-receiver))
- 
+
 
 (defn- get-linked-data-objs-wo-acls
   [cfg data-obj-receiver]
@@ -93,16 +100,16 @@
   (sql/with-query-results result [(mk-is-link-coll-query link-path)]
     (first result)))
 
-  
+
 (defn- attach-acls
   [cfg entry-provider entry-receiver]
-  (letfn [(attach-acl [entry] (assoc entry :acl (get-acl cfg (:id entry) (partial mapv identity))))]    
+  (letfn [(attach-acl [entry] (assoc entry :acl (get-acl cfg (:id entry) (partial mapv identity))))]
     (entry-provider (comp entry-receiver (partial map attach-acl)))))
 
 
 (defn init
   "This function creates the map containing the configuration parameters.
-   
+
    Parameters:
      user - the ICAT database user name
      password - the ICAT database user password
@@ -111,9 +118,10 @@
   {:collection-base  collection-base
    :user             user
    :password         password
-   :result-page-size 100})
+   :result-page-size 80
+   :es-url           "http://localhost:9200"})
 
-  
+
 (defmacro with-icat
   "This opens the database connection and excecutes the provided operation within a transaction.
    Operating within a transaction ensures that the autocommit is off, allowing a cursor to be used
@@ -143,13 +151,13 @@
      It returns whatever the continuation returns."
   [cfg coll-receiver]
   (letfn [(keep? [coll] (or (empty? (:type coll))
-                            (and (= (:type coll) "linkPoint") (is-link-coll? (:name coll)))))] 
+                            (and (= (:type coll) "linkPoint") (is-link-coll? (:name coll)))))]
     (attach-acls cfg (partial get-colls-wo-acls cfg) (comp coll-receiver (partial filter keep?)))))
 
 
 (defn get-data-objects
   "Given an open connection, this function executes appropriate queries on the connection requesting
-   all data objects under the collection-base with each data object having an attached ACL. It 
+   all data objects under the collection-base with each data object having an attached ACL. It
    passes a lazy stream of data objects to the given continuation following CPS.
 
    Parameters:
@@ -161,10 +169,44 @@
   nil)
 
 
+(defn- mk-index-doc
+  [entry]
+  (letfn [(fmt-perm      [perm] (condp = perm
+                                  "read object"   "read"
+                                  "modify object" "write"
+                                  "own"           "own"
+                                                  nil))
+          (fmt-acl-entry [acl-entry] {:name       (:name acl-entry)
+                                      :zone       (:zone acl-entry)
+                                      :permission (fmt-perm (:permission acl-entry))})]
+    {:name        (:name entry)
+     :parent-path (:parent-path entry)
+     :create-time (Integer/parseInt (:create-time entry))
+     :modify-time (Integer/parseInt (:modify-time entry))
+     :acl         (map fmt-acl-entry (:acl entry))}))
+
+
+(defn- mk-index-id
+  [entry]
+  (file/path-join (:parent-path entry) (:name entry)))
+
+
+(defn- index-entry
+  [indexer entry-type entry]
+  (let [id  (mk-index-id entry)
+        doc (mk-index-doc entry)]
+    (es-if/put indexer index entry-type id doc)))
+
+
 ; This is just a test function
 (defn doit
   [cfg]
-  (letfn [(print-colls [colls] (doseq [coll colls] (pprint coll)))]
-    (with-icat cfg 
-      (get-collections cfg print-colls)
-      (get-data-objects cfg print-colls))))
+  (let [indexer (es/mk-indexer (:es-url cfg))
+        index   (fn [entry-type entries]
+                  (->> entries
+                    (partition-all 8)
+                    (pmap (fn [chunk] (doall (map #(index-entry indexer entry-type %) chunk))))
+                    dorun))]
+    (with-icat cfg
+      (get-collections cfg (partial index dir-type))
+      (get-data-objects cfg (partial index file-type)))))
