@@ -12,7 +12,7 @@
                  [com.github.drsnyder/beanstalk "1.0.0-clj14"]
                  [postgresql "9.0-801.jdbc4"]
                  [slingshot "0.10.3"]
-                 [org.iplantc/clj-jargon "0.2.5-SNAPSHOT"]
+                 [org.iplantc/clj-jargon "0.2.12-SNAPSHOT"]
                  [org.iplantc/clojure-commons "1.4.1-SNAPSHOT"]]
   :profiles {:dev {:dependencies   [[org.iplantc/boxy "0.1.2-SNAPSHOT"]]
                    :resource-paths ["dev-resources"]}}
