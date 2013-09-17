@@ -111,11 +111,13 @@
   "This function creates the map containing the configuration parameters.
 
    Parameters:
+     icat-host - the name of the server hosting the ICAT database
      user - the ICAT database user name
      password - the ICAT database user password
      collection-base - the root collection contain all the entries of interest"
-  [user password collection-base]
+  [icat-host user password collection-base]
   {:collection-base  collection-base
+   :icat-host        icat-host
    :user             user
    :password         password
    :result-page-size 80
@@ -132,7 +134,7 @@
      ops - The operations that will be executed on the open connection."
   [cfg & ops]
   `(sql/with-connection {:subprotocol "postgresql"
-                         :subname     "ICAT"
+                         :subname     (str "//" (:icat-host ~cfg) ":5432/ICAT")
                          :user        (:user ~cfg)
                          :password    (:password ~cfg)}
      ~@ops))
@@ -193,9 +195,12 @@
 
 (defn- index-entry
   [indexer entry-type entry]
-  (let [id  (mk-index-id entry)
-        doc (mk-index-doc entry)]
-    (es-if/put indexer index entry-type id doc)))
+  (try
+    (let [id  (mk-index-id entry)
+          doc (mk-index-doc entry)]
+      (es-if/put indexer index entry-type id doc))
+    (catch Exception e
+      (println "Failed to index" entry-type entry ":" e))))
 
 
 ; This is just a test function
