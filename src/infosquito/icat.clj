@@ -10,13 +10,13 @@
 ; TODO describe a collection map
 ; TODO describe a permission map
 
-(def ^{:private true} index "iplant")
+(def ^{:private true} index "data")
 (def ^{:private true} file-type "file")
 (def ^{:private true} dir-type "folder")
 
 (defn- mk-acl-query
   [entry-id]
-  (str "SELECT u.user_name  \"name\",
+  (str "SELECT u.user_name  \"username\",
                u.zone_name  \"zone\",
                t.token_name \"permission\"
           FROM r_objt_access AS a
@@ -27,47 +27,41 @@
 
 (defn- mk-colls-query
   [coll-base]
-  (str "SELECT coll_id                                         id,
-               REPLACE(coll_name, parent_coll_name || '/', '') \"name\",
-               parent_coll_name                                \"parent-path\",
-               create_ts                                       \"create-time\",
-               modify_ts                                       \"modify-time\",
-               coll_type                                       \"type\"
+  (str "SELECT coll_id                                         \"db-id\",
+               coll_name                                       \"id\",
+               REPLACE(coll_name, parent_coll_name || '/', '') \"label\",
+               coll_owner_name                                 \"creator-name\",
+               coll_owner_zone                                 \"creator-zone\",
+               CAST(create_ts AS bigint)                       \"date-created\",
+               CAST(modify_ts AS bigint)                       \"date-modified\"
           FROM r_coll_main
-          WHERE coll_name LIKE '" coll-base "/%'"))
+          WHERE coll_name LIKE '" coll-base "/%' AND coll_type = ''"))
 
 
 (defn- mk-data-objs-query
   [coll-base]
-  (str "SELECT DISTINCT d.data_id   \"id\",
-                        d.data_name \"name\",
-                        c.coll_name \"parent-path\",
-                        d.create_ts \"create-time\",
-                        d.modify_ts \"modify-time\"
+  (str "SELECT DISTINCT d.data_id                           \"db-id\",
+                        (c.coll_name || '/' || d.data_name) \"id\",
+                        d.data_name                         \"label\",
+                        d.data_owner_name                   \"creator-name\",
+                        d.data_owner_zone                   \"creator-zone\",
+                        CAST(d.create_ts AS bigint)         \"date-created\",
+                        CAST(d.modify_ts AS bigint)         \"date-modified\",
+                        d.data_size                         \"file-size\",
+                        d.data_type_name                    \"info-type\"
           FROM r_data_main AS d LEFT JOIN r_coll_main AS c ON d.coll_id = c.coll_id
           WHERE c.coll_name LIKE '" coll-base "/%'"))
 
 
-(defn- mk-linked-data-objs-query
-  [coll-base]
-  (str "SELECT c.coll_id                                       \"id\",
-               REPLACE(coll_name, parent_coll_name || '/', '') \"name\",
-               c.parent_coll_name                              \"parent-path\",
-               d.\"create-time\"                               \"create-time\",
-               d.\"modify-time\"                               \"modify-time\"
-          FROM r_coll_main AS c
-            INNER JOIN (" (mk-data-objs-query coll-base) ") AS d
-              ON c.coll_info1 = (d.\"parent-path\" || '/' || d.name)
-          WHERE c.coll_name LIKE '" coll-base "/%' AND c.coll_type = 'linkPoint'"))
+(defn- mk-meta-query
+  [entry-id]
+  (str "SELECT meta_attr_name  \"attribute\",
+               meta_attr_value \"value\",
+               meta_attr_unit  \"unit\"
+          FROM r_meta_main 
+          WHERE meta_id IN (SELECT meta_id FROM r_objt_metamap WHERE object_id = " entry-id ")"))
 
-
-(defn- mk-is-link-coll-query
-  [link]
-  (str "SELECT COUNT(*) > 0
-          FROM r_coll_main
-          WHERE coll_name IN (SELECT coll_info1 FROM r_coll_main WHERE coll_name = '" link "')"))
-
-
+  
 (defn- query-paged
   [cfg sql-query result-receiver]
   (sql/transaction (sql/with-query-results*
@@ -90,23 +84,36 @@
   (query-paged cfg (mk-data-objs-query (:collection-base cfg)) data-obj-receiver))
 
 
-(defn- get-linked-data-objs-wo-acls
-  [cfg data-obj-receiver]
-  (query-paged cfg (mk-linked-data-objs-query (:collection-base cfg)) data-obj-receiver))
+(defn- get-metadata
+  [cfg entry-id meta-receiver]
+  (query-paged cfg (mk-meta-query entry-id) meta-receiver))
 
 
-(defn- is-link-coll?
-  [link-path]
-  (sql/with-query-results result [(mk-is-link-coll-query link-path)]
-    (first result)))
+(defn- attach-acl 
+  [cfg entry] 
+  (assoc entry :user-permissions (get-acl cfg (:db-id entry) (partial mapv identity))))
 
 
-(defn- attach-acls
+(defn- attach-metadata 
+  [cfg entry] 
+  (assoc entry :metadata (get-metadata cfg (:db-id entry) (partial mapv identity))))
+
+
+(defn- attach-with
+  [attach entry-provider entry-receiver]
+  (entry-provider (comp entry-receiver (partial map attach))))
+
+  
+(defn- map-acls
   [cfg entry-provider entry-receiver]
-  (letfn [(attach-acl [entry] (assoc entry :acl (get-acl cfg (:id entry) (partial mapv identity))))]
-    (entry-provider (comp entry-receiver (partial map attach-acl)))))
+  (attach-with (partial attach-acl cfg) entry-provider entry-receiver))
 
 
+(defn- map-metadata
+  [cfg entry-provider entry-receiver]
+  (attach-with (partial attach-metadata cfg) entry-provider entry-receiver))
+
+  
 (defn init
   "This function creates the map containing the configuration parameters.
 
@@ -114,14 +121,15 @@
      icat-host - the name of the server hosting the ICAT database
      user - the ICAT database user name
      password - the ICAT database user password
-     collection-base - the root collection contain all the entries of interest"
-  [icat-host user password collection-base]
+     collection-base - the root collection contain all the entries of interest
+     es-host - The IP address or domain name of the Elastic Search host"
+  [icat-host user password collection-base es-host]
   {:collection-base  collection-base
    :icat-host        icat-host
    :user             user
    :password         password
    :result-page-size 80
-   :es-url           "http://localhost:9200"})
+   :es-url           (str "http://" es-host ":9200")})
 
 
 (defmacro with-icat
@@ -152,9 +160,7 @@
    Returns:
      It returns whatever the continuation returns."
   [cfg coll-receiver]
-  (letfn [(keep? [coll] (or (empty? (:type coll))
-                            (and (= (:type coll) "linkPoint") (is-link-coll? (:name coll)))))]
-    (attach-acls cfg (partial get-colls-wo-acls cfg) (comp coll-receiver (partial filter keep?)))))
+  (map-metadata cfg (partial map-acls cfg (partial get-colls-wo-acls cfg)) coll-receiver))
 
 
 (defn get-data-objects
@@ -166,39 +172,37 @@
      cfg - the configuration mapping
      obj-receiver - The continuation that will receive the stream of data objects"
   [cfg obj-receiver]
-  (attach-acls cfg (partial get-data-objs-wo-acls cfg) obj-receiver)
-  (attach-acls cfg (partial get-linked-data-objs-wo-acls cfg) obj-receiver)
-  nil)
+  (map-metadata cfg (partial map-acls cfg (partial get-data-objs-wo-acls cfg)) obj-receiver))
 
 
 (defn- mk-index-doc
-  [entry]
-  (letfn [(fmt-perm      [perm] (condp = perm
-                                  "read object"   "read"
-                                  "modify object" "write"
-                                  "own"           "own"
-                                                  nil))
-          (fmt-acl-entry [acl-entry] {:name       (:name acl-entry)
-                                      :zone       (:zone acl-entry)
-                                      :permission (fmt-perm (:permission acl-entry))})]
-    {:name        (:name entry)
-     :parent-path (:parent-path entry)
-     :create-time (Integer/parseInt (:create-time entry))
-     :modify-time (Integer/parseInt (:modify-time entry))
-     :acl         (map fmt-acl-entry (:acl entry))}))
-
-
-(defn- mk-index-id
-  [entry]
-  (file/path-join (:parent-path entry) (:name entry)))
+  [entry-type entry]
+  (let [fmt-perm   (fn [perm] (condp = perm
+                                "read object"   "read"
+                                "modify object" "write"
+                                "own"           "own"
+                                                nil))
+        fmt-user   (fn [name zone] {:username name :zone zone}) 
+        fmt-access (fn [access] {:permission (fmt-perm (:permission access))
+                                 :user       (fmt-user (:username access) (:zone access))})
+        doc        {:id               (:id entry)
+                    :user-permissions (map fmt-access (:user-permissions entry))
+                    :creator          (fmt-user (:creator-name entry) (:creator-zone entry))
+                    :date-created     (:date-created entry)
+                    :date-modified    (:date-modified entry)
+                    :label            (:label entry)
+                    :metadata         (:metadata entry)}]
+    (if (= entry-type dir-type)
+      doc
+      (assoc doc
+             :file-size (:file-size entry)
+             :info-type (:info-type entry)))))
 
 
 (defn- index-entry
   [indexer entry-type entry]
   (try
-    (let [id  (mk-index-id entry)
-          doc (mk-index-doc entry)]
-      (es-if/put indexer index entry-type id doc))
+    (es-if/put indexer index entry-type (:id entry) (mk-index-doc entry-type entry))
     (catch Exception e
       (println "Failed to index" entry-type entry ":" e))))
 
