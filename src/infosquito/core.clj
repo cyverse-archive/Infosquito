@@ -3,7 +3,6 @@
   (:gen-class)
   (:require [clojure.tools.cli :as cli]
             [clojure.tools.logging :as log]
-            [com.github.drsnyder.beanstalk :as beanstalk]
             [slingshot.slingshot :as ss]
             [clj-jargon.jargon :as irods]
             [clj-jargon.lazy-listings :as lazyrods]
@@ -35,13 +34,7 @@
 
 
 (defn- ->queue
-  [props]
-  (letfn [(ctor [] (beanstalk/new-beanstalk (props/get-beanstalk-host props)
-                                            (props/get-beanstalk-port props)))]
-    (queue/mk-client ctor
-                     1
-                     (props/get-job-ttr props)
-                     (props/get-work-tube props))))
+  [props])
 
 
 (defn- ->worker
@@ -73,8 +66,6 @@
      (do ~@body)
      (catch [:type :connection-refused] {:keys [~'msg]} (log/error "connection failure." ~'msg))
      (catch [:type :connection] {:keys [~'msg]} (log/error "connection failure." ~'msg))
-     (catch [:type :beanstalkd-oom] {:keys []}
-       (log/error "An error occurred. beanstalkd is out of memory and is probably wedged."))
      (catch Object o# (log/error (exn/fmt-throw-context ~'&throw-context)))))
 
 

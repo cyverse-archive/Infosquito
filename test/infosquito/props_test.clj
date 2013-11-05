@@ -1,7 +1,7 @@
 (ns infosquito.props-test
   (:use clojure.test
         infosquito.props)
-  (:import [java.io FileReader] 
+  (:import [java.io FileReader]
            [java.util Properties]))
 
 
@@ -10,20 +10,20 @@
     (.load (FileReader. "dev-resources/local.properties"))))
 
 
-(deftest test-get-beanstalk-host
-  (is (= "localhost" (get-beanstalk-host props))))
+(deftest test-get-amqp-host
+  (is (= "localhost" (get-amqp-host props))))
 
 
-(deftest test-get-job-ttr
-  (is (= 120 (get-job-ttr props))))
+(deftest test-get-amqp-port
+  (is (= 31333 (get-amqp-port props))))
 
 
-(deftest test-get-beanstalk-port
-  (is (= 11300 (get-beanstalk-port props))))
+(deftest test-get-amqp-user
+  (is (= "nobody" (get-amqp-user props))))
 
 
-(deftest test-get-work-tube
-  (is (= "infosquito" (get-work-tube props))))
+(deftest test-get-amqp-pass
+  (is (= "somepass" (get-amqp-pass props))))
 
 
 (deftest test-get-es-scroll-page-size
@@ -35,7 +35,7 @@
 
 
 (deftest test-get-es-url
-  (is (= "http://localhost:9200" 
+  (is (= "http://localhost:9200"
          (str (get-es-url props)))))
 
 
@@ -74,17 +74,16 @@
 (deftest test-get-retry-delay
   (is (= 10000 (get-retry-delay props))))
 
-        
+
 (deftest test-validate
   (testing "all properties to be validated are in local.properties"
     (is (validate props println)))
   (testing "all properties in local.properties are being validated"
-   (letfn [(logs-error [name & msg] 
-                       (is (= (str "The property " name 
+   (letfn [(logs-error [name & msg]
+                       (is (= (str "The property " name
                                    " is missing from the configuration.")
                               (apply print-str msg))))]
      (doseq [name (keys props)]
        (let [props' (.clone props)]
          (.remove props' name)
          (is (false? (validate props' (partial logs-error name)))))))))
-  

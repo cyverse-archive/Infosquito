@@ -190,9 +190,6 @@
                     (list-subdirs-in irods dir-path)))
         (dorun (map (partial visit-listing-entry (partial index-data-object worker))
                     (list-files-in irods dir-path))))
-      (catch [:type :beanstalkd-oom] {} (log-stop-warn "beanstalkd is out of memory."))
-      (catch [:type :beanstalkd-draining] {}
-        (log-stop-warn "beanstalkd is not accepting new jobs."))
       (catch [:type :bad-path] {:keys [msg]} (log-stop-warn msg))
       (catch [:type :permission-denied] {:keys [msg]} (log-stop-warn msg))
       (catch [:type :missing-irods-entry] {}
@@ -239,11 +236,7 @@
                 (queue/put (:queue worker) (cheshire/encode (mk-job remove-entry-job path))))
               (recur (:_scroll_id resp)))))))
     (catch [:type :index-scroll] {:keys [resp]}
-      (log/error "Stopping removal of missing entries." resp))
-    (catch [:type :beanstalkd-oom] {}
-      (log/warn "Stopping removal of missing entries. beanstalkd is out of memory."))
-    (catch [:type :beanstalkd-draining] {}
-      (log/warn "Stopping removal of missing entries. beanstalkd is not accepting new jobs."))))
+      (log/error "Stopping removal of missing entries." resp))))
 
 
 (defn- sync-index
@@ -325,8 +318,7 @@
      :connection - This is thrown if it loses a required connection.
      :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
-     :unknown-error - This is thrown if an unidentifiable error occurs.
-     :beanstalkd-oom - This is thrown if beanstalkd is out of memory."
+     :unknown-error - This is thrown if an unidentifiable error occurs."
   [worker]
   (let [queue (:queue worker)]
     (when-let [job (queue/reserve queue)]
