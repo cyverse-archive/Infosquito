@@ -8,7 +8,6 @@
             [clj-jargon.jargon :as irods]
             [clj-jargon.lazy-listings :as lazyrods]
             [clojure-commons.file-utils :as file]
-            [clojure-commons.infosquito.work-queue :as queue]
             [infosquito.es-if :as es]
             [infosquito.exceptions :as exn])
   (:import [org.irods.jargon.core.exception FileNotFoundException
@@ -141,13 +140,11 @@
 
 
 (defn- index-collection
-  [worker collection]
+  [worker queue collection]
   (ss/try+
     (index-entry worker collection)
     (when-not (= ObjStat$SpecColType/LINKED_COLL (.getSpecColType collection))
-      (queue/put
-       (:queue worker)
-       (cheshire/encode (mk-job index-members-job (.getFormattedAbsolutePath collection)))))
+      (.publish queue (mk-job index-members-job (.getFormattedAbsolutePath collection))))
     (catch [:type :permission-denied] {:keys [msg entry]} (log/warn "skipping" entry "-" msg))
     (catch [:type :missing-irods-entry] {:keys [entry]} (log-missing-entry entry))))
 
@@ -179,14 +176,14 @@
      :internal-error - This is thrown if there is an error in the logic error internal to the work
        queue.
      :unknown-error - This is thrown if an unidentifiable error occurs."
-  [worker dir-path]
+  [worker queue dir-path]
   (log/trace "indexing the members of" dir-path)
   (letfn [(log-stop-warn [reason] (log/warn (str "Stopping indexing members of " dir-path ". "
                                                  reason)))]
     (ss/try+
       (let [irods (:irods worker)]
         (validate-path dir-path)
-        (dorun (map (partial visit-listing-entry (partial index-collection worker))
+        (dorun (map (partial visit-listing-entry (partial index-collection worker queue))
                     (list-subdirs-in irods dir-path)))
         (dorun (map (partial visit-listing-entry (partial index-data-object worker))
                     (list-files-in irods dir-path))))
@@ -224,7 +221,7 @@
      :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
-  [worker]
+  [worker queue]
   (ss/try+
     (let [indexer (:indexer worker)]
       (when (es/exists? indexer index)
@@ -233,7 +230,7 @@
             (when-not (:_scroll_id resp) (ss/throw+ {:type :index-scroll :resp resp}))
             (when (pos? (count (cerr/hits-from resp)))
               (doseq [path (remove #(irods/exists? (:irods worker) %) (cerr/ids-from resp))]
-                (queue/put (:queue worker) (cheshire/encode (mk-job remove-entry-job path))))
+                (.publish queue (cheshire/encode (mk-job remove-entry-job path))))
               (recur (:_scroll_id resp)))))))
     (catch [:type :index-scroll] {:keys [resp]}
       (log/error "Stopping removal of missing entries." resp))))
@@ -245,10 +242,10 @@
      :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
-  [worker]
+  [worker queue]
   (log/info "Synchronizing index with iRODS repository")
-  (remove-missing-entries worker)
-  (index-members worker (:index-root worker)))
+  (remove-missing-entries worker queue)
+  (index-members worker queue (:index-root worker)))
 
 
 (defn- dispatch-job
@@ -257,83 +254,42 @@
      :internal-error - This is thrown if there is an error in the logic error internal to the
        worker.
      :unknown-error - This is thrown if an unidentifiable error occurs."
-  [worker job]
-  (let [type (:type job)]
-    (condp = type
-      index-entry-job   (index-entry-path worker (:path job))
-      index-members-job (index-members worker (:path job))
-      remove-entry-job  (remove-entry worker (:path job))
-      sync-job          (sync-index worker)
-                        (log/warn "ignoring unknown job" type))))
+  [worker queue {:keys [type path]}]
+  (condp = type
+    index-entry-job   (index-entry-path worker path)
+    index-members-job (index-members worker queue path)
+    remove-entry-job  (remove-entry worker path)
+    sync-job          (sync-index worker queue)
+                      (log/warn "ignoring unknown job type," type)))
 
 
 (defn mk-worker
   "Constructs the worker
 
    Parameters:
-     queue-client - the connected queue client
      irods - The irods proxy
      indexer - The client for the Elastic Search platform
      index-root - This is the absolute path into irods indicating the directory whose contents are
        to be indexed.
-     job-ttr - The number of seconds before beanstalk with expire a job reservation.
      scroll-ttl - The amount of time Elastic Search will persist a scan result
      scroll-page-size - The number of scan result entries to return for a single scroll call.
-     retry-delay - the number of seconds to wait before retrying a task.
 
    Returns:
      A worker object"
-  [queue-client irods indexer index-root job-ttr scroll-ttl scroll-page-size retry-delay]
-  {:queue            queue-client
-   :irods            irods
+  [irods indexer index-root scroll-ttl scroll-page-size]
+  {:irods            irods
    :indexer          indexer
    :index-root       (file/rm-last-slash index-root)
-   :job-ttr          job-ttr
    :scroll-ttl       scroll-ttl
-   :scroll-page-size scroll-page-size
-   :retry-delay      retry-delay})
+   :scroll-page-size scroll-page-size})
 
 
-(defn- repeatedly-renew
-  [worker job]
-  (let [delay-time-ms  (-> (:job-ttr worker) (* 1000) (/ 2))
-        renew-in-a-bit (fn [] (Thread/sleep delay-time-ms)
-                              (queue/touch (:queue worker) (:id job))
-                              (log/debug "renewed current job reservation"))]
-    (ss/try+
-      (dorun (repeatedly renew-in-a-bit))
-      (catch [:type :connection] {:keys [msg]} (log/error "connection failure." msg))
-      (catch InterruptedException _)
-      (catch Object _ (log/error (exn/fmt-throw-context &throw-context))))))
-
-
-(defn process-next-job
-  "Reads the next available job from the queue and performs it.  If there are no jobs in the queue,
-   it will wait for the next available job.
-
-   Parameters:
-     worker - The worker performing the job.
-
-   Throws:
-     :connection - This is thrown if it loses a required connection.
-     :internal-error - This is thrown if there is an error in the logic error internal to the
-       worker.
-     :unknown-error - This is thrown if an unidentifiable error occurs."
-  [worker]
-  (let [queue (:queue worker)]
-    (when-let [job (queue/reserve queue)]
-      (let [renewer (future (repeatedly-renew worker job))]
-      (ss/try+
-        (dispatch-job worker (cheshire/decode (:payload job) true))
-        (future-cancel renewer)
-        (queue/delete queue (:id job))
-        (catch [:type :listing-error] {:keys [dir-path]}
-          (log/error "error encountered while obtaining listings for" dir-path
-                     "- moving directory task to the end of the queue")
-          (queue/delete queue (:id job))
-          (queue/put queue (:payload job) :delay (:retry-delay worker)))
-        (finally
-          (ss/try+
-            (when-not (future-cancelled? renewer) (future-cancel renewer))
-            (queue/release queue (:id job))
-            (catch Object _))))))))
+(defn process-job
+  "Processes a job from the work queue."
+  [worker queue payload]
+  (ss/try+
+   (dispatch-job worker queue (cheshire/decode payload true))
+   (catch [:type :listing-error] {:keys [dir-path]}
+     (log/error "error encountered while obtaining listings for" dir-path
+                "- moving directory task to the end of the queue")
+     (.publish queue payload))))
