@@ -3,117 +3,65 @@
   (:import [java.net URL]))
 
 
-(defn- get-int-prop
-  [props name]
-  (Integer/parseInt (get props name)))
+(def ^:private prop-names
+  ["infosquito.es.host"
+   "infosquito.es.port"
+   "infosquito.icat.host"
+   "infosquito.icat.port"
+   "infosquito.icat.user"
+   "infosquito.icat.pass"
+   "infosquito.icat.db"
+   "infosquito.base.collection"])
 
-
-(defn get-beanstalk-host
+(defn get-es-host
   [props]
-  (get props "infosquito.beanstalk.host"))
-  
+  (get props "infosquito.es.host"))
 
-(defn get-job-ttr
+
+(defn get-es-port
   [props]
-  (get-int-prop props "infosquito.job-ttr"))
+  (get props "infosquito.es.port"))
 
-  
-(defn get-beanstalk-port
+
+(defn get-icat-host
   [props]
-  (get-int-prop props "infosquito.beanstalk.port"))
-  
+  (get props "infosquito.icat.host"))
 
-(defn get-work-tube
+
+(defn get-icat-port
   [props]
-  (get props "infosquito.work-tube"))
-  
+  (get props "infosquito.icat.port"))
 
-(defn get-es-scroll-page-size
+
+(defn get-icat-user
   [props]
-  (get-int-prop props "infosquito.es.scroll-page-size"))
+  (get props "infosquito.icat.user"))
 
 
-(defn get-es-scroll-ttl
+(defn get-icat-pass
   [props]
-  (get props "infosquito.es.scroll-ttl"))
+  (get props "infosquito.icat.pass"))
 
-  
-(defn get-es-url
+
+(defn get-icat-db
   [props]
-  (URL. "http"
-        (get props "infosquito.es.host")
-        (get-int-prop props "infosquito.es.port")
-        ""))
+  (get props "infosquito.icat.db"))
 
 
-(defn get-irods-default-resource
+(defn get-base-collection
   [props]
-  (get props "infosquito.irods.default-resource"))  
+  (get props "infosquito.base.collection"))
 
 
-(defn get-irods-home
-  [props]
-  (get props "infosquito.irods.home"))
-
-
-(defn get-irods-host
-  [props]
-  (get props "infosquito.irods.host"))
-  
-
-(defn get-irods-index-root
-  [props]
-  (get props "infosquito.irods.index-root"))
-
-  
-(defn get-irods-password
-  [props]
-  (get props "infosquito.irods.password"))
-
-
-(defn get-irods-port
-  [props]
-  (get-int-prop props "infosquito.irods.port"))
-
-
-(defn get-irods-user
-  [props]
-  (get props "infosquito.irods.user"))
-
-
-(defn get-irods-zone
-  [props]
-  (get props "infosquito.irods.zone"))
-
-
-(defn get-retry-delay
-  [props]
-  (get-int-prop props "infosquito.retry-delay"))
+(defn- prop-exists?
+  [props log-invalid prop-name]
+  (or (get props prop-name)
+      (do (log-invalid prop-name) false)))
 
 
 (defn validate
+  "Validates the configuration. We don't want short-circuit evaluation in this case because
+   logging all missing configuration settings is helpful."
   [props log-invalid]
-  (let [exists? (fn [label] (if (get props label)
-                              true
-                              (do
-                                (log-invalid "The property" label 
-                                             "is missing from the configuration.")
-                                false)))     
-        labels ["infosquito.beanstalk.host"
-                "infosquito.beanstalk.port"
-                "infosquito.es.host"
-                "infosquito.es.port"
-                "infosquito.es.scroll-ttl"
-                "infosquito.es.scroll-page-size"
-                "infosquito.irods.host"
-                "infosquito.irods.port"
-                "infosquito.irods.user"
-                "infosquito.irods.password"
-                "infosquito.irods.home"
-                "infosquito.irods.zone"
-                "infosquito.irods.default-resource"
-                "infosquito.irods.index-root"
-                "infosquito.job-ttr"
-                "infosquito.work-tube"
-                "infosquito.retry-delay"]]
-    (every? exists? labels)))
+  (reduce (fn [a b] (and a b))
+          (map (partial prop-exists? props log-invalid) prop-names)))
