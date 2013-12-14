@@ -12,3 +12,4 @@ pom.xml
 /bin
 .dir-locals.el
 *.eld
+/local.properties
