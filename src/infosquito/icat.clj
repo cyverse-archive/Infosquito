@@ -1,9 +1,12 @@
 (ns infosquito.icat
   (:use clojure.pprint)
-  (:require [clojure.java.jdbc :as sql]
+  (:require [clj-time.core :as ct]
+            [clojure.java.jdbc :as sql]
+            [clojure.tools.logging :as log]
             [clojure-commons.file-utils :as file]
             [infosquito.es :as es]
-            [infosquito.es-if :as es-if]))
+            [infosquito.es-if :as es-if])
+  (:import [org.joda.time.format PeriodFormatterBuilder]))
 
 (def ^:private index "data")
 (def ^:private file-type "file")
@@ -186,13 +189,13 @@
 (defn- mk-index-doc
   [entry-type entry]
   (let [fmt-perm   (fn [perm] (condp = perm
-                                "read object"   "read"
-                                "modify object" "write"
-                                "own"           "own"
-                                                nil))
+                               "read object"   "read"
+                               "modify object" "write"
+                               "own"           "own"
+                               nil))
         fmt-user   (fn [name zone] {:username name :zone zone})
         fmt-access (fn [access] {:permission (fmt-perm (:permission access))
-                                 :user       (fmt-user (:username access) (:zone access))})
+                                :user       (fmt-user (:username access) (:zone access))})
         doc        {:id               (:id entry)
                     :user-permissions (map fmt-access (:user-permissions entry))
                     :creator          (fmt-user (:creator-name entry) (:creator-zone entry))
@@ -203,8 +206,8 @@
     (if (= entry-type dir-type)
       doc
       (assoc doc
-             :file-size (:file-size entry)
-             :info-type (:info-type entry)))))
+        :file-size (:file-size entry)
+        :info-type (:info-type entry)))))
 
 
 (defn- index-entry
@@ -214,16 +217,82 @@
     (catch Exception e
       (println "Failed to index" entry-type entry ":" e))))
 
+(def ^:private count-collections-query
+  "SELECT count(*) \"count\"
+     FROM r_coll_main
+    WHERE coll_name LIKE ? AND coll_type = ''")
 
-; This is just a test function
-(defn doit
+(defn- count-collections
   [cfg]
-  (let [indexer (es/mk-indexer (:es-url cfg))
-        index   (fn [entry-type entries]
-                  (->> entries
-                    (partition-all 8)
-                    (pmap (fn [chunk] (doall (map #(index-entry indexer entry-type %) chunk))))
-                    dorun))]
-    (with-icat cfg
-      (get-collections cfg (partial index dir-type))
-      (get-data-objects cfg (partial index file-type)))))
+  (sql/with-query-results rs [count-collections-query (str (:collection-base cfg) "/%")]
+    (:count (first rs))))
+
+
+(def ^:private count-data-objects-query
+  "SELECT count(d.*) \"count\"
+     FROM r_data_main d
+     JOIN r_coll_main c ON d.coll_id = c.coll_id
+    WHERE c.coll_name like ?")
+
+
+(defn- count-data-objects
+  [cfg]
+  (sql/with-query-results rs [count-data-objects-query (str (:collection-base cfg) "/%")]
+    (:count (first rs))))
+
+
+(def ^:private period-formatter
+  (-> (PeriodFormatterBuilder.)
+      (.appendHours)
+      (.appendSuffix " hour", " hours")
+      (.appendSeparator ", ")
+      (.appendMinutes)
+      (.appendSuffix " minute", " minutes")
+      (.appendSeparator ", ")
+      (.appendSeconds)
+      (.appendSuffix " second", " seconds")
+      (.toFormatter)))
+
+
+(defn- notifier
+  [notify-count f]
+  (let [idx-start      (ref (ct/now))
+        idx-count      (ref 0)
+        get-interval   #(.print period-formatter (.toPeriod (ct/interval @idx-start (ct/now))))]
+    (fn [entry]
+      (f entry)
+      (let [c (dosync (alter idx-count inc))]
+        (when (zero? (mod c notify-count))
+          (println "Over" c "processed in" (get-interval)))))))
+
+
+(defn- index-results
+  [index-fn entries]
+  (dorun (pmap (fn [chunk] (dorun (map index-fn chunk)))
+               (partition-all 8 entries))))
+
+
+(defn- index-collections
+  [cfg indexer]
+  (println "Indexing" (count-collections cfg) "collections.")
+  (->> (partial index-entry indexer dir-type)
+       (notifier 10000)
+       (partial index-results)
+       (get-collections cfg)))
+
+
+(defn- index-data-objects
+  [cfg indexer]
+  (println "Indexing" (count-data-objects cfg) "data objects.")
+  (->> (partial index-entry indexer file-type)
+       (notifier 10000)
+       (partial index-results)
+       (get-data-objects cfg)))
+
+
+(defn reindex
+  [cfg]
+  (with-icat cfg
+    (let [indexer (es/mk-indexer (:es-url cfg))]
+      (index-collections cfg indexer)
+      (index-data-objects cfg indexer))))

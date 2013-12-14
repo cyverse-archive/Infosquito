@@ -8,6 +8,7 @@
                  [org.clojure/tools.cli "0.2.2"]
                  [org.clojure/tools.logging "0.2.6"]
                  [cheshire "5.1.0"]
+                 [clj-time "0.6.0"]
                  [clojurewerkz/elastisch "1.0.2"]
                  [com.github.drsnyder/beanstalk "1.0.0-clj14"]
                  [postgresql "9.0-801.jdbc4"]
