@@ -243,6 +243,9 @@
 
 (def ^:private period-formatter
   (-> (PeriodFormatterBuilder.)
+      (.appendDays)
+      (.appendSuffix " day", "days")
+      (.appendSeparator ", ")
       (.appendHours)
       (.appendSuffix " hour", " hours")
       (.appendSeparator ", ")
