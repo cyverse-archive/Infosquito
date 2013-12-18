@@ -193,21 +193,21 @@
                                "modify object" "write"
                                "own"           "own"
                                nil))
-        fmt-user   (fn [name zone] {:username name :zone zone})
+        fmt-user   (fn [name zone] (str name "#" zone))
         fmt-access (fn [access] {:permission (fmt-perm (:permission access))
                                 :user       (fmt-user (:username access) (:zone access))})
-        doc        {:id               (:id entry)
-                    :user-permissions (map fmt-access (:user-permissions entry))
-                    :creator          (fmt-user (:creator-name entry) (:creator-zone entry))
-                    :date-created     (:date-created entry)
-                    :date-modified    (:date-modified entry)
-                    :label            (:label entry)
-                    :metadata         (:metadata entry)}]
+        doc        {:id              (:id entry)
+                    :userPermissions (map fmt-access (:user-permissions entry))
+                    :creator         (fmt-user (:creator-name entry) (:creator-zone entry))
+                    :dateCreated     (:date-created entry)
+                    :dateModified    (:date-modified entry)
+                    :label           (:label entry)
+                    :metadata        (:metadata entry)}]
     (if (= entry-type dir-type)
       doc
       (assoc doc
-        :file-size (:file-size entry)
-        :info-type (:info-type entry)))))
+        :fileSize (:file-size entry)
+        :fileType (:info-type entry)))))
 
 
 (defn- index-entry
@@ -217,10 +217,12 @@
     (catch Exception e
       (println "Failed to index" entry-type entry ":" e))))
 
+
 (def ^:private count-collections-query
   "SELECT count(*) \"count\"
      FROM r_coll_main
     WHERE coll_name LIKE ? AND coll_type = ''")
+
 
 (defn- count-collections
   [cfg]
