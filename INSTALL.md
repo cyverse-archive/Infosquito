@@ -7,34 +7,8 @@ Please contact Core Software with questions about enabling the YUM repository.
 
 ## Overview
 
-* [Install beanstalkd](#install-beanstalkd)
 * [Install elasticsearch](#install-elasticsearch)
 * [Install infosquito](#install-infosquito)
-
-## Install Beanstalkd
-
-An RPM for beanstalkd is available in iPlant's YUM repositories. This RPM
-provides the standard beanstalkd installation along with an initd script that
-can be used to stop and start beanstalkd.
-
-Note that the init script uses Clavin to obtain configuration settings from
-Zookeeper. Clavin will automatically be installed when beanstalkd is installed
-using this RPM package.
-
-### Installation
-
-```
-$ sudo yum install iplant-beanstalk
-```
-
-### Configuration
-
-The only configrable setting for this beanstalkd installation is the port number
-that beanstalkd listens to for incoming connections.
-
-```
-beanstalk.app.listen-port = 11300
-```
 
 ## Install Elasticsearch
 
@@ -218,7 +192,7 @@ The result should look similar to the result included here.
 ## Install infosquito
 
 Infosquito is also packaged as an RPM, so installation is similar to the
-installation of beanstalkd and elasticsearch.
+installation of the other backend services for the DE.
 
 ### Installation
 
@@ -229,13 +203,6 @@ $ sudo yum install infosquito
 ### Configulon
 
 ```
-# Beanstalk settings
-infosquito.beanstalk.host = somehost.example.org
-infosquito.beanstalk.port = 11300
-infosquito.beanstalk.tube = infosquito
-infosquito.job-ttr        = 120
-infosquito.work-tube      = infosquito
-
 # Elasticsearch settings
 infosquito.es.host                = somehost.example.org
 infosquito.es.port                = 9200
@@ -259,20 +226,7 @@ infosquito.retry-delay   = 10000
 
 ### Publishing a Sync Task
 
-Infosquito won't start to synchronize the index until it receives a task in its
-Beanstalk queue to tell it to do so. A utility has been provided in the `scm`
-repository that will publish this task. Here's the usage:
-
-```
-sync-index.sh host port
-```
-
-For example, if beanstalk is installed on the local host and listening to port
-11300, then you could use this command:
-
-```
-$ $SCM_HOME/work-queue/sync-index.sh localhost 11300
-```
+TODO: update this when the ability to add a new sync task has been added.
 
 ### Verifying Index Entries
 
@@ -351,9 +305,7 @@ $ curl -s http://localhost:9200/iplant/folder/%2fiplant%2fhome%2fipctest | pytho
 The goal here is to verify that the file is indexed and that the permissions
 reported in the index are the same as the permissions reported by `ils`.  In
 this case, the permissions do, in fact, match. It's important to ensure that the
-permissons haven't changed since the file was indexed. When the iRODS rule to
-submit tasks to Beanstalk is installed, it will no longer be necessary to
-re-index the entire data store every few days.
+permissons haven't changed since the file was indexed.
 
 Verifying that a file was indexed correctly is similar. First, check list the
 file along with its permissions using `ils`:

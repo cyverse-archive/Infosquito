@@ -10,7 +10,6 @@
                  [cheshire "5.1.0"]
                  [clj-time "0.6.0"]
                  [clojurewerkz/elastisch "1.0.2"]
-                 [com.github.drsnyder/beanstalk "1.0.0-clj14"]
                  [postgresql "9.0-801.jdbc4"]
                  [slingshot "0.10.3"]
                  [org.iplantc/clj-jargon "0.2.12-SNAPSHOT"]
