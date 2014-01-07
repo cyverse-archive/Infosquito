@@ -78,11 +78,17 @@
   ((comp icat/reindex icat/init props->icat-cfg) props))
 
 
+(defn- wait-for-messages
+  [props]
+  (throw (UnsupportedOperationException. "not implemented")))
+
+
 (defn- parse-args
   [args]
   (cli/cli
    args
    ["-c" "--config" "sets the local configuration file to be read, bypassing Zookeeper"]
+   ["-r" "--reindex" "reindex the iPlant Data Store and exit" :flag true]
    ["-?" "-h" "--help" "show help and exit" :flag true]))
 
 
@@ -96,7 +102,6 @@
 (defn -main
   [& args]
   (let [[opts _ help-text] (parse-args args)]
-    (when (:help opts)
-      (println help-text)
-      (System/exit 0))
-    (reindex (get-props opts))))
+    (cond (:help opts)    (println help-text)
+          (:reindex opts) (reindex (get-props opts))
+          :else           (wait-for-messages (get-props opts)))))
