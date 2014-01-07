@@ -5,8 +5,10 @@
             [clojure.tools.logging :as log]
             [slingshot.slingshot :as ss]
             [clojure-commons.config :as config]
+            [infosquito.actions :as actions]
             [infosquito.exceptions :as exn]
             [infosquito.icat :as icat]
+            [infosquito.messages :as messages]
             [infosquito.props :as props])
   (:import [java.util Properties]))
 
@@ -26,6 +28,7 @@
   [config-path]
   (let [p (ref nil)]
     (config/load-config-from-file nil config-path p)
+    (validate-props @p)
     @p))
 
 
@@ -33,6 +36,7 @@
   []
   (let [p (ref nil)]
     (config/load-config-from-zookeeper p "infosquito")
+    (validate-props @p)
     @p))
 
 
@@ -54,33 +58,11 @@
    (catch Object _ (exit "Unable to load the configuration parameters."))))
 
 
-(defn- props->icat-cfg
-  [p]
-  {:icat-host       (props/get-icat-host p)
-   :icat-port       (props/get-icat-port p)
-   :icat-db         (props/get-icat-db p)
-   :icat-user       (props/get-icat-user p)
-   :icat-password   (props/get-icat-pass p)
-   :collection-base (props/get-base-collection p)
-   :es-host         (props/get-es-host p)
-   :es-port         (props/get-es-port p)})
-
-
 (defmacro ^:private trap-exceptions!
   [& body]
   `(ss/try+
      (do ~@body)
      (catch Object o# (log/error (exn/fmt-throw-context ~'&throw-context)))))
-
-
-(defn- reindex
-  [props]
-  ((comp icat/reindex icat/init props->icat-cfg) props))
-
-
-(defn- wait-for-messages
-  [props]
-  (throw (UnsupportedOperationException. "not implemented")))
 
 
 (defn- parse-args
@@ -103,5 +85,5 @@
   [& args]
   (let [[opts _ help-text] (parse-args args)]
     (cond (:help opts)    (println help-text)
-          (:reindex opts) (reindex (get-props opts))
-          :else           (wait-for-messages (get-props opts)))))
+          (:reindex opts) (actions/reindex (get-props opts))
+          :else           (messages/subscribe (get-props opts)))))

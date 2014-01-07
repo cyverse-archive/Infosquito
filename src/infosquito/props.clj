@@ -1,5 +1,6 @@
 (ns infosquito.props
   "This namespace holds all of the logic for managing the configuration values"
+  (:require [clojure.tools.logging :as log])
   (:import [java.net URL]))
 
 
@@ -11,7 +12,12 @@
    "infosquito.icat.user"
    "infosquito.icat.pass"
    "infosquito.icat.db"
-   "infosquito.base.collection"])
+   "infosquito.base.collection"
+   "infosquito.amqp.host"
+   "infosquito.amqp.port"
+   "infosquito.amqp.user"
+   "infosquito.amqp.pass"
+   "infosquito.amqp.reindex-queue"])
 
 (defn get-es-host
   [props]
@@ -51,6 +57,36 @@
 (defn get-base-collection
   [props]
   (get props "infosquito.base.collection"))
+
+
+(defn get-amqp-host
+  [props]
+  (get props "infosquito.amqp.host"))
+
+
+(defn get-amqp-port
+  [props]
+  (let [port-str (get props "infosquito.amqp.port")]
+    (try
+      (Integer/parseInt port-str)
+      (catch NumberFormatException e
+        (log/fatal "invalid AMQP port:" port-str)
+        (System/exit 1)))))
+
+
+(defn get-amqp-user
+  [props]
+  (get props "infosquito.amqp.user"))
+
+
+(defn get-amqp-pass
+  [props]
+  (get props "infosquito.amqp.pass"))
+
+
+(defn get-amqp-reindex-queue
+  [props]
+  (get props "infosquito.amqp.reindex-queue"))
 
 
 (defn- prop-exists?
