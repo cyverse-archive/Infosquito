@@ -1,4 +1,4 @@
-(defproject infosquito "0.2.1-SNAPSHOT"
+(defproject infosquito "1.8.4-SNAPSHOT"
   :description "This is a web service to enable searching of iPlant Collaborative user content."
   :license {:url "file://LICENSE.txt"}
   :aot [infosquito.core]
@@ -17,7 +17,7 @@
                  [org.iplantc/clojure-commons "1.4.1-SNAPSHOT"]]
   :profiles {:dev {:dependencies   [[org.iplantc/boxy "0.1.2-SNAPSHOT"]]
                    :resource-paths ["dev-resources"]}}
-  :plugins [[org.iplantc/lein-iplant-rpm "1.4.1-SNAPSHOT"]]
+  :plugins [[org.iplantc/lein-iplant-rpm "1.4.3-SNAPSHOT"]]
   :iplant-rpm {:summary      "infosquito"
                :dependencies ["iplant-service-config >= 0.1.0-5"]
                :config-files ["log4j.properties"]
