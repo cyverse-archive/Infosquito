@@ -46,12 +46,12 @@ information about configuring an elasticsearch cluster.
 ### Index Initialization
 
 We've created a utility called
-[proboscus](https://github.com/iPlantCollaborativeOpenSource/proboscus) to help
+[proboscis](https://github.com/iPlantCollaborativeOpenSource/proboscis) to help
 with the index initialization. In most cases, the index can be initialized using
 the following command:
 
 ```
-$ proboscus -h hostname
+$ proboscis -h hostname
 ```
 
 Other customization options are available, however. For more information, plase
@@ -202,26 +202,27 @@ $ sudo yum install infosquito
 
 ### Configulon
 
-```
-# Elasticsearch settings
-infosquito.es.host                = somehost.example.org
-infosquito.es.port                = 9200
-infosquito.es.scroll-page-size    = 50
-infosquito.es.scroll-ttl          = 10m
+```properties
+# ElasticSearch Settings
+infosquito.es.host = somehost.example.org
+infosquito.es.port = 5555
 
-# iRODS settings
-infosquito.irods.default-resource =
-infosquito.irods.home             = /somezone/home
-infosquito.irods.host             = somehost.example.org
-infosquito.irods.index-root       = /somezone/home
-infosquito.irods.password         = somepassword
-infosquito.irods.port             = 1247
-infosquito.irods.user             = rodsadmin
-infosquito.irods.zone             = someotherpassword
+# ICAT Database Connection Settings
+infosquito.icat.host = someotherhost.example.org
+infosquito.icat.port = 4444
+infosquito.icat.user = someuser
+infosquito.icat.pass = somepassword
+infosquito.icat.db   = somedatabase
 
-# Miscellaneous settings
-infosquito.num-instances = 2
-infosquito.retry-delay   = 10000
+# Indexing Options
+infosquito.base.collection = /path/to/root
+
+# AMQP Settings
+infosquito.amqp.host           = yetanotherhost.example.org
+infosquito.amqp.port           = 3333
+infosquito.amqp.user           = someotheruser
+infosquito.amqp.pass           = someotherpassword
+infosquito.amqp.reindex-queue  = foo.bar
 ```
 
 ### Publishing a Sync Task
