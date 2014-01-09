@@ -19,7 +19,7 @@
 
 (defn- delete-item
   [item-type id]
-  (log/warn "deleting index entry for" (name item-type) id)
+  (log/trace "deleting index entry for" (name item-type) id)
   (esd/delete index (name item-type) id))
 
 (defn- purge-deleted-items

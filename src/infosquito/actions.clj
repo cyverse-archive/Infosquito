@@ -16,6 +16,5 @@
 (defn reindex
   [props]
   (let [icat-cfg ((comp icat/init props->icat-cfg) props)]
-    (icat/with-icat icat-cfg
-      (esc/purge-index props)
-      (icat/reindex icat-cfg))))
+    (.start (Thread. #(icat/with-icat icat-cfg (esc/purge-index props))))
+    (icat/with-icat icat-cfg (icat/reindex icat-cfg))))
