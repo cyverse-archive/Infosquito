@@ -13,3 +13,4 @@ pom.xml
 .dir-locals.el
 *.eld
 /local.properties
+.nrepl-port

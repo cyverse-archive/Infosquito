@@ -1,16 +1,17 @@
 (ns infosquito.icat
-  (:use clojure.pprint)
-  (:require [clj-time.core :as ct]
-            [clojure.java.jdbc :as sql]
+  (:use [clojure.pprint :only [pprint]]
+        [infosquito.progress :only [notifier]])
+  (:require [clojure.java.jdbc :as sql]
+            [clojure.string :as string]
             [clojure.tools.logging :as log]
             [clojure-commons.file-utils :as file]
             [infosquito.es :as es]
-            [infosquito.es-if :as es-if])
-  (:import [org.joda.time.format PeriodFormatterBuilder]))
+            [infosquito.es-if :as es-if]))
 
 (def ^:private index "data")
 (def ^:private file-type "file")
 (def ^:private dir-type "folder")
+
 
 (defn- mk-acl-query
   [entry-id]
@@ -122,9 +123,8 @@
      icat-user       - the ICAT database user name
      icat-password   - the ICAT database user password
      collection-base - the root collection contain all the entries of interest
-     es-host         - The IP address or domain name of the Elastic Search host
-     es-port         - the Elastic Search port number (defaults to '9200')"
-  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-host es-port]
+     es-url          - the base URL to use when connecting to ElasticSearch"
+  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-url]
     :or   {icat-port "5432"
            icat-db   "ICAT"
            es-port   "9200"}}]
@@ -135,7 +135,7 @@
    :icat-user        icat-user
    :icat-password    icat-password
    :result-page-size 80
-   :es-url           (str "http://" es-host ":" es-port)})
+   :es-url           es-url})
 
 
 (defn get-db-spec
@@ -147,7 +147,7 @@
    :password    icat-password})
 
 
-(defmacro ^:private with-icat
+(defmacro with-icat
   "This opens the database connection and excecutes the provided operation within a transaction.
    Operating within a transaction ensures that the autocommit is off, allowing a cursor to be used
    on the database.  This in turn allows for large result sets that don't fit in memory.
@@ -243,34 +243,6 @@
     (:count (first rs))))
 
 
-(def ^:private period-formatter
-  (-> (PeriodFormatterBuilder.)
-      (.appendDays)
-      (.appendSuffix " day", "days")
-      (.appendSeparator ", ")
-      (.appendHours)
-      (.appendSuffix " hour", " hours")
-      (.appendSeparator ", ")
-      (.appendMinutes)
-      (.appendSuffix " minute", " minutes")
-      (.appendSeparator ", ")
-      (.appendSeconds)
-      (.appendSuffix " second", " seconds")
-      (.toFormatter)))
-
-
-(defn- notifier
-  [notify-count f]
-  (let [idx-start      (ref (ct/now))
-        idx-count      (ref 0)
-        get-interval   #(.print period-formatter (.toPeriod (ct/interval @idx-start (ct/now))))]
-    (fn [entry]
-      (f entry)
-      (let [c (dosync (alter idx-count inc))]
-        (when (zero? (mod c notify-count))
-          (println "Over" c "processed in" (get-interval)))))))
-
-
 (defn- index-results
   [index-fn entries]
   (dorun (pmap (fn [chunk] (dorun (map index-fn chunk)))
@@ -295,9 +267,34 @@
        (get-data-objects cfg)))
 
 
+(def ^:private file-existence-query
+  (str "SELECT count(*) FROM r_data_main d "
+       "JOIN r_coll_main c ON d.coll_id = c.coll_id "
+       "WHERE c.coll_name = ? "
+       "AND d.data_name = ?"))
+
+
+(defn file-exists?
+  [path]
+  (let [dir-path  (string/replace path #"/[^/]+$" "")
+        file-name (string/replace path #"^.*/" "")]
+    (sql/with-query-results rs [file-existence-query dir-path file-name]
+      ((comp pos? :count first) rs))))
+
+
+(def ^:private folder-existence-query
+  (str "SELECT count(*) FROM r_coll_main "
+       "WHERE coll_name = ?"))
+
+
+(defn folder-exists?
+  [path]
+  (sql/with-query-results rs [folder-existence-query path]
+    ((comp pos? :count first) rs)))
+
+
 (defn reindex
   [cfg]
-  (with-icat cfg
-    (let [indexer (es/mk-indexer (:es-url cfg))]
-      (index-collections cfg indexer)
-      (index-data-objects cfg indexer))))
+  (let [indexer (es/mk-indexer (:es-url cfg))]
+    (index-collections cfg indexer)
+    (index-data-objects cfg indexer)))

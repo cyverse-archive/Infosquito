@@ -21,6 +21,9 @@
 (deftest test-get-es-port
   (is (= "31338" (get-es-port props))))
 
+(deftest test-get-es-scroll-size
+  (is (= "1m" (get-es-scroll-size props))))
+
 (deftest test-get-icat-host
   (is (= "icat-host" (get-icat-host props))))
 
@@ -38,6 +41,21 @@
 
 (deftest test-get-base-collection
   (is (= "/iplant/home" (get-base-collection props))))
+
+(deftest test-get-amqp-host
+  (is (= "amqp-host" (get-amqp-host props))))
+
+(deftest test-get-amqp-port
+  (is (= 9999 (get-amqp-port props))))
+
+(deftest test-get-amqp-user
+  (is (= "amqp-user" (get-amqp-user props))))
+
+(deftest test-get-amqp-pass
+  (is (= "amqp-pass" (get-amqp-pass props))))
+
+(deftest test-get-amqp-reindex-queue
+  (is (= "amqp-reindex-queue" (get-amqp-reindex-queue props))))
 
 (deftest test-validate
   (testing "all properties to be validated are in local.properites"

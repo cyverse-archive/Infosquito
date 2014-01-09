@@ -7,6 +7,7 @@
 (def ^:private prop-names
   ["infosquito.es.host"
    "infosquito.es.port"
+   "infosquito.es.scroll-size"
    "infosquito.icat.host"
    "infosquito.icat.port"
    "infosquito.icat.user"
@@ -27,6 +28,16 @@
 (defn get-es-port
   [props]
   (get props "infosquito.es.port"))
+
+
+(defn get-es-url
+  [props]
+  (str "http://" (get-es-host props) ":" (get-es-port props)))
+
+
+(defn get-es-scroll-size
+  [props]
+  (get props "infosquito.es.scroll-size"))
 
 
 (defn get-icat-host

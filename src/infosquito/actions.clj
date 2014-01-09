@@ -1,18 +1,21 @@
 (ns infosquito.actions
-  (:require [infosquito.icat :as icat]
-            [infosquito.props :as props]))
+  (:require [infosquito.es-crawler :as esc]
+            [infosquito.icat :as icat]
+            [infosquito.props :as cfg]))
 
 (defn- props->icat-cfg
   [p]
-  {:icat-host       (props/get-icat-host p)
-   :icat-port       (props/get-icat-port p)
-   :icat-db         (props/get-icat-db p)
-   :icat-user       (props/get-icat-user p)
-   :icat-password   (props/get-icat-pass p)
-   :collection-base (props/get-base-collection p)
-   :es-host         (props/get-es-host p)
-   :es-port         (props/get-es-port p)})
+  {:icat-host       (cfg/get-icat-host p)
+   :icat-port       (cfg/get-icat-port p)
+   :icat-db         (cfg/get-icat-db p)
+   :icat-user       (cfg/get-icat-user p)
+   :icat-password   (cfg/get-icat-pass p)
+   :collection-base (cfg/get-base-collection p)
+   :es-url          (cfg/get-es-url p)})
 
 (defn reindex
   [props]
-  ((comp icat/reindex icat/init props->icat-cfg) props))
+  (let [icat-cfg ((comp icat/init props->icat-cfg) props)]
+    (icat/with-icat icat-cfg
+      (esc/purge-index props)
+      (icat/reindex icat-cfg))))
