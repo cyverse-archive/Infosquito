@@ -14,6 +14,7 @@
   [item-type props]
   (esd/scroll-seq (esd/search index (name item-type)
                               :query       (q/match-all)
+                              :fields      ["_id"]
                               :search_type "query_then_fetch"
                               :scroll      (cfg/get-es-scroll-size props))))
 
