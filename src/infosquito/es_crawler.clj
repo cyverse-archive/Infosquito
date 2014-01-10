@@ -16,7 +16,8 @@
                               :query       (q/match-all)
                               :fields      ["_id"]
                               :search_type "query_then_fetch"
-                              :scroll      (cfg/get-es-scroll-size props))))
+                              :scroll      "1m"
+                              :size        (cfg/get-es-scroll-size props))))
 
 (defn- delete-item
   [item-type id]
