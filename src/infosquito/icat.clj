@@ -270,7 +270,7 @@
   [cfg indexer]
   (log/info "indexing" (count-data-objects cfg) "data objects")
   (->> (partial index-entry indexer file-type)
-       (notifier (notifier (:notify? cfg) (:notify-count cfg)))
+       (notifier (:notify? cfg) (:notify-count cfg))
        (partial index-results)
        (get-data-objects cfg))
   (log/info "data object indexing complete"))
