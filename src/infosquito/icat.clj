@@ -123,11 +123,16 @@
      icat-user       - the ICAT database user name
      icat-password   - the ICAT database user password
      collection-base - the root collection contain all the entries of interest
-     es-url          - the base URL to use when connecting to ElasticSearch"
-  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-url]
-    :or   {icat-port "5432"
-           icat-db   "ICAT"
-           es-port   "9200"}}]
+     es-url          - the base URL to use when connecting to ElasticSearch
+     notify?         - true if progress notifications are enabled
+     notify-count    - the number of items to process before logging a notification"
+  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-url
+           notify? notify-count]
+    :or   {icat-port    "5432"
+           icat-db      "ICAT"
+           es-port      "9200"
+           notify?      false
+           notify-count 0}}]
   {:collection-base  collection-base
    :icat-host        icat-host
    :icat-port        icat-port
@@ -135,7 +140,9 @@
    :icat-user        icat-user
    :icat-password    icat-password
    :result-page-size 80
-   :es-url           es-url})
+   :es-url           es-url
+   :notify?          notify?
+   :notify-count     notify-count})
 
 
 (defn get-db-spec
@@ -215,7 +222,7 @@
   (try
     (es-if/put indexer index entry-type (:id entry) (mk-index-doc entry-type entry))
     (catch Exception e
-      (println "Failed to index" entry-type entry ":" e))))
+      (log/error e "failed to index" entry-type entry))))
 
 
 (def ^:private count-collections-query
@@ -251,20 +258,22 @@
 
 (defn- index-collections
   [cfg indexer]
-  (println "Indexing" (count-collections cfg) "collections.")
+  (log/info "indexing" (count-collections cfg) "collections")
   (->> (partial index-entry indexer dir-type)
-       (notifier 10000)
+       (notifier (:notify? cfg) (:notify-count cfg))
        (partial index-results)
-       (get-collections cfg)))
+       (get-collections cfg))
+  (log/info "collection indexing complete"))
 
 
 (defn- index-data-objects
   [cfg indexer]
-  (println "Indexing" (count-data-objects cfg) "data objects.")
+  (log/info "indexing" (count-data-objects cfg) "data objects")
   (->> (partial index-entry indexer file-type)
-       (notifier 10000)
+       (notifier (notifier (:notify? cfg) (:notify-count cfg)))
        (partial index-results)
-       (get-data-objects cfg)))
+       (get-data-objects cfg))
+  (log/info "data object indexing complete"))
 
 
 (def ^:private file-existence-query

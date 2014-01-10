@@ -1,5 +1,6 @@
 (ns infosquito.progress
-  (:require [clj-time.core :as ct])
+  (:require [clj-time.core :as ct]
+            [clojure.tools.logging :as log])
   (:import [org.joda.time.format PeriodFormatterBuilder]))
 
 (def ^:private period-formatter
@@ -17,7 +18,7 @@
       (.appendSuffix " second", " seconds")
       (.toFormatter)))
 
-(defn notifier
+(defn- create-notifier
   [notify-count f]
   (let [idx-start      (ref (ct/now))
         idx-count      (ref 0)
@@ -26,5 +27,9 @@
       (let [r (f entry)
             c (dosync (alter idx-count inc))]
         (when (zero? (mod c notify-count))
-          (println "Over" c "processed in" (get-interval)))
+          (log/info "over" c "processed in" (get-interval)))
         r))))
+
+(defn notifier
+  [notifications-enabled? notify-count f]
+  (if notifications-enabled? (create-notifier notify-count f) f))

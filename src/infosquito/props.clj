@@ -18,7 +18,20 @@
    "infosquito.amqp.port"
    "infosquito.amqp.user"
    "infosquito.amqp.pass"
-   "infosquito.amqp.reindex-queue"])
+   "infosquito.amqp.reindex-queue"
+   "infosquito.notify.enabled"
+   "infosquito.notify.count"])
+
+
+(defn- get-int
+  [props prop-name description]
+  (let [string-value (get props prop-name)]
+    (try
+      (Integer/parseInt string-value)
+      (catch NumberFormatException e
+        (log/fatal "invalid" description "-" string-value)
+        (System/exit 1)))))
+
 
 (defn get-es-host
   [props]
@@ -77,12 +90,7 @@
 
 (defn get-amqp-port
   [props]
-  (let [port-str (get props "infosquito.amqp.port")]
-    (try
-      (Integer/parseInt port-str)
-      (catch NumberFormatException e
-        (log/fatal "invalid AMQP port:" port-str)
-        (System/exit 1)))))
+  (get-int props "infosquito.amqp.port" "AMQP port"))
 
 
 (defn get-amqp-user
@@ -98,6 +106,16 @@
 (defn get-amqp-reindex-queue
   [props]
   (get props "infosquito.amqp.reindex-queue"))
+
+
+(defn notify-enabled?
+  [props]
+  (Boolean/parseBoolean (get props "infosquito.notify.enabled")))
+
+
+(defn get-notify-count
+  [props]
+  (get-int props "infosquito.notify.count" "notify count"))
 
 
 (defn- prop-exists?

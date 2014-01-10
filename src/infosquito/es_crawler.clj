@@ -26,12 +26,13 @@
 
 (defn- purge-deleted-items
   [item-type item-exists? props]
-  (println "Purging non-existent" (name item-type) "entries.")
+  (log/info "purging non-existent" (name item-type) "entries")
   (->> (item-seq item-type props)
-       (map (notifier 10000 :_id))
+       (map (notifier (cfg/notify-enabled? props) (cfg/get-notify-count props) :_id))
        (remove item-exists?)
        (map (partial delete-item item-type))
-       (dorun)))
+       (dorun))
+  (log/info (name item-type) "entry purging complete"))
 
 (def ^:private purge-deleted-files (partial purge-deleted-items :file icat/file-exists?))
 (def ^:private purge-deleted-folders (partial purge-deleted-items :folder icat/folder-exists?))
