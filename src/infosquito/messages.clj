@@ -27,8 +27,14 @@
 
 (defn- reindex-handler
   [props ch {:keys [delivery-tag]} _]
-  (actions/reindex props)
-  (lb/ack ch delivery-tag))
+  (try
+    (actions/reindex props)
+    (lb/ack ch delivery-tag)
+    (catch Throwable t
+      (log/error t "data store reindexing failed")
+      (log/warn "requeuing message after" (cfg/get-retry-interval props) "seconds")
+      (Thread/sleep (cfg/get-retry-millis props))
+      (lb/reject ch delivery-tag true))))
 
 (defn- add-reindex-subscription
  [props ch]
@@ -43,7 +49,7 @@
         ch   (lch/open conn)]
     (try
       (add-reindex-subscription props ch)
-      (catch Exception e (log/error e "error occurred during message processing"))
+      (catch Exception e (log/fatal e "error occurred during message processing"))
       (finally
         (rmq/close ch)
         (rmq/close conn)))))

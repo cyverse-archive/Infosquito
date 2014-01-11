@@ -219,10 +219,13 @@
 
 (defn- index-entry
   [indexer entry-type entry]
+  (log/debug "indexing" entry-type (:id entry))
   (try
-    (es-if/put indexer index entry-type (:id entry) (mk-index-doc entry-type entry))
+    (->>  (mk-index-doc entry-type entry)
+          (log/spy :trace)
+          (es-if/put indexer index entry-type (:id entry)))
     (catch Exception e
-      (log/error e "failed to index" entry-type entry))))
+      (log/error e "failed to index" entry-type (:id entry)))))
 
 
 (def ^:private count-collections-query

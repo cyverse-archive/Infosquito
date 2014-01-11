@@ -22,14 +22,24 @@
 (defn- delete-item
   [item-type id]
   (log/trace "deleting index entry for" (name item-type) id)
-  (esd/delete index (name item-type) id))
+  (try
+    (esd/delete index (name item-type) id)
+    (catch Throwable t
+      (log/error t "unable to remove the index entry for" (name item-type) id))))
+
+(defn- existence-logger
+  [item-type item-exists?]
+  (fn [id]
+    (let [exists? (item-exists? id)]
+      (log/trace (name item-type) id (if exists? "exists" "does not exist"))
+      exists?)))
 
 (defn- purge-deleted-items
   [item-type item-exists? props]
   (log/info "purging non-existent" (name item-type) "entries")
   (->> (item-seq item-type props)
        (map (notifier (cfg/notify-enabled? props) (cfg/get-notify-count props) :_id))
-       (remove item-exists?)
+       (remove (existence-logger item-type item-exists?))
        (map (partial delete-item item-type))
        (dorun))
   (log/info (name item-type) "entry purging complete"))

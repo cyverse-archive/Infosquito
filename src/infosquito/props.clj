@@ -20,7 +20,8 @@
    "infosquito.amqp.pass"
    "infosquito.amqp.reindex-queue"
    "infosquito.notify.enabled"
-   "infosquito.notify.count"])
+   "infosquito.notify.count"
+   "infosquito.retry-interval"])
 
 
 (defn- get-int
@@ -28,6 +29,16 @@
   (let [string-value (get props prop-name)]
     (try
       (Integer/parseInt string-value)
+      (catch NumberFormatException e
+        (log/fatal "invalid" description "-" string-value)
+        (System/exit 1)))))
+
+
+(defn- get-long
+  [props prop-name description]
+  (let [string-value (get props prop-name)]
+    (try
+      (Long/parseLong string-value)
       (catch NumberFormatException e
         (log/fatal "invalid" description "-" string-value)
         (System/exit 1)))))
@@ -116,6 +127,16 @@
 (defn get-notify-count
   [props]
   (get-int props "infosquito.notify.count" "notify count"))
+
+
+(defn get-retry-interval
+  [props]
+  (get-long props "infosquito.retry-interval" "retry interval"))
+
+
+(defn get-retry-millis
+  [props]
+  (long (* 1000 (get-retry-interval props))))
 
 
 (defn- prop-exists?
