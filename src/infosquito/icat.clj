@@ -13,15 +13,27 @@
 (def ^:private dir-type "folder")
 
 
+(defn fmt-query-list
+  [vals]
+  (if (empty? vals)
+    ""
+    (loop [[f & r] vals
+           v-str   ""]
+      (if (empty? r)
+        (str v-str f)
+        (recur r (str v-str f \,))))))
+
+
 (defn- mk-acl-query
-  [entry-id]
-  (str "SELECT u.user_name  \"username\",
+  [entry-ids]
+  (str "SELECT a.object_id  \"db-id\",
+               u.user_name  \"username\",
                u.zone_name  \"zone\",
                t.token_name \"permission\"
           FROM r_objt_access AS a
             LEFT JOIN r_user_main AS u ON a.user_id = u.user_id
             LEFT JOIN r_tokn_main AS t ON a.access_type_id = t.token_id
-          WHERE a.object_id = " entry-id))
+          WHERE a.object_id in (" (fmt-query-list entry-ids) ")"))
 
 
 (defn- mk-colls-query
@@ -53,12 +65,13 @@
 
 
 (defn- mk-meta-query
-  [entry-id]
-  (str "SELECT meta_attr_name  \"attribute\",
-               meta_attr_value \"value\",
-               meta_attr_unit  \"unit\"
-          FROM r_meta_main
-          WHERE meta_id IN (SELECT meta_id FROM r_objt_metamap WHERE object_id = " entry-id ")"))
+  [entry-ids]
+  (str "SELECT map.object_id        \"db-id\",
+               main.meta_attr_name  \"attribute\",
+               main.meta_attr_value \"value\",
+               main.meta_attr_unit  \"unit\"
+          FROM r_objt_metamap AS map LEFT JOIN r_meta_main AS main ON main.meta_id = map.meta_id
+          WHERE map.object_id in (" (fmt-query-list entry-ids) ")"))
 
 
 (defn- query-paged
@@ -68,49 +81,58 @@
                      result-receiver)))
 
 
-(defn- get-acl
-  [cfg entry-id acl-receiver]
-  (query-paged cfg (mk-acl-query entry-id) acl-receiver))
+(defn- get-acls
+  [cfg entry-ids acl-receiver]
+  (query-paged cfg (mk-acl-query entry-ids) acl-receiver))
 
 
 (defn- get-colls-wo-acls
+  "This higher order function retrieves a list of collections from the ICAT and passes them one at a
+   time to the receiving function following CPS.
+
+   Parameters:
+     cfg           - the configuration mapping.
+     coll-receiver - This is a function that receives individual collections. It must receive a
+                     collection as its only parameter."
   [cfg coll-receiver]
   (query-paged cfg (mk-colls-query (:collection-base cfg)) coll-receiver))
 
 
 (defn- get-data-objs-wo-acls
+  "This higher order function retrieves a list of data objects from the ICAT and passes them one at
+   a time to the receiving function following CPS.
+
+   Parameters:
+     cfg               - the configuration mapping.
+     data-obj-receiver - This is a function that receives individual data objects. It must receive a
+                         data object as its only parameter."
   [cfg data-obj-receiver]
   (query-paged cfg (mk-data-objs-query (:collection-base cfg)) data-obj-receiver))
 
 
 (defn- get-metadata
-  [cfg entry-id meta-receiver]
-  (query-paged cfg (mk-meta-query entry-id) meta-receiver))
+  [cfg entry-ids meta-receiver]
+  (query-paged cfg (mk-meta-query entry-ids) meta-receiver))
 
 
-(defn- attach-acl
-  [cfg entry]
-  (assoc entry :user-permissions (get-acl cfg (:db-id entry) (partial mapv identity))))
+(defn- harvest-props
+  [props prop-key entity]
+  (->> props
+    (filter #(= (:db-id %) (:db-id entity)))
+    (map #(dissoc % :db-id))
+    (assoc entity prop-key)))
+
+
+(defn- attach-acls
+  [cfg entries]
+  (let [acls (get-acls cfg (map :db-id entries) (partial mapv identity))]
+    (map (partial harvest-props acls :user-permissions) entries)))
 
 
 (defn- attach-metadata
-  [cfg entry]
-  (assoc entry :metadata (get-metadata cfg (:db-id entry) (partial mapv identity))))
-
-
-(defn- attach-with
-  [attach entry-provider entry-receiver]
-  (entry-provider (comp entry-receiver (partial map attach))))
-
-
-(defn- map-acls
-  [cfg entry-provider entry-receiver]
-  (attach-with (partial attach-acl cfg) entry-provider entry-receiver))
-
-
-(defn- map-metadata
-  [cfg entry-provider entry-receiver]
-  (attach-with (partial attach-metadata cfg) entry-provider entry-receiver))
+  [cfg entries]
+  (let [avus (get-metadata cfg (map :db-id entries) (partial mapv identity))]
+    (map (partial harvest-props avus :metadata) entries)))
 
 
 (defn init
@@ -134,7 +156,7 @@
    :icat-db          icat-db
    :icat-user        icat-user
    :icat-password    icat-password
-   :result-page-size 80
+   :result-page-size 100
    :es-url           es-url})
 
 
@@ -159,6 +181,13 @@
   `(sql/with-connection (get-db-spec ~cfg) ~@ops))
 
 
+(defn prepare-entries-for
+  [cfg entries receiver]
+  (letfn [(process-groups [groups] (doseq [e (->> groups (attach-acls cfg) (attach-metadata cfg))]
+                                     (receiver e)))]
+    (dorun (pmap process-groups (partition-all 10 entries)))))
+
+
 (defn get-collections
   "Given an open connection, this function executes appropriate queries on the connection requesting
    all collections under the collection-base with each collection having an attached ACL. It passes
@@ -171,7 +200,7 @@
    Returns:
      It returns whatever the continuation returns."
   [cfg coll-receiver]
-  (map-metadata cfg (partial map-acls cfg (partial get-colls-wo-acls cfg)) coll-receiver))
+  (get-colls-wo-acls cfg #(prepare-entries-for cfg % coll-receiver)))
 
 
 (defn get-data-objects
@@ -183,7 +212,7 @@
      cfg - the configuration mapping
      obj-receiver - The continuation that will receive the stream of data objects"
   [cfg obj-receiver]
-  (map-metadata cfg (partial map-acls cfg (partial get-data-objs-wo-acls cfg)) obj-receiver))
+  (get-data-objs-wo-acls cfg #(prepare-entries-for cfg % obj-receiver)))
 
 
 (defn- mk-index-doc
@@ -243,18 +272,11 @@
     (:count (first rs))))
 
 
-(defn- index-results
-  [index-fn entries]
-  (dorun (pmap (fn [chunk] (dorun (map index-fn chunk)))
-               (partition-all 8 entries))))
-
-
 (defn- index-collections
   [cfg indexer]
   (println "Indexing" (count-collections cfg) "collections.")
   (->> (partial index-entry indexer dir-type)
        (notifier 10000)
-       (partial index-results)
        (get-collections cfg)))
 
 
@@ -263,7 +285,6 @@
   (println "Indexing" (count-data-objects cfg) "data objects.")
   (->> (partial index-entry indexer file-type)
        (notifier 10000)
-       (partial index-results)
        (get-data-objects cfg)))
 
 
