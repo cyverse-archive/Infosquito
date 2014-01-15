@@ -139,29 +139,31 @@
   "This function creates the map containing the configuration parameters.
 
    Parameters:
-     icat-host       - the name of the server hosting the ICAT database
-     icat-port       - the ICAT port number (defaults to '5432')
-     icat-db         - the name of the ICAT database (defaults to 'ICAT')
-     icat-user       - the ICAT database user name
-     icat-password   - the ICAT database user password
-     collection-base - the root collection contain all the entries of interest
-     es-url          - the base URL to use when connecting to ElasticSearch
-     notify?         - true if progress notifications are enabled
-     notify-count    - the number of items to process before logging a notification"
-  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-url
-           notify? notify-count]
-    :or   {icat-port    "5432"
-           icat-db      "ICAT"
-           es-port      "9200"
-           notify?      false
-           notify-count 0}}]
+     icat-host        - the name of the server hosting the ICAT database
+     icat-port        - the ICAT port number (defaults to '5432')
+     icat-db          - the name of the ICAT database (defaults to 'ICAT')
+     icat-user        - the ICAT database user name
+     icat-password    - the ICAT database user password
+     collection-base  - the root collection contain all the entries of interest
+     es-url           - the base URL to use when connecting to ElasticSearch
+     notify?          - true if progress notifications are enabled
+     notify-count     - the number of items to process before logging a notification
+     index-batch-size - the number of items to be processed at once during an indexing pass"
+  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-url notify?
+           notify-count index-batch-size]
+    :or   {icat-port        "5432"
+           icat-db          "ICAT"
+           es-port          "9200"
+           notify?          false
+           notify-count     0
+           index-batch-size 100}}]
   {:collection-base  collection-base
    :icat-host        icat-host
    :icat-port        icat-port
    :icat-db          icat-db
    :icat-user        icat-user
    :icat-password    icat-password
-   :result-page-size 100 ; TODO this needs to be set to some multiple of the index-batch-size
+   :result-page-size (* 8 index-batch-size)
    :es-url           es-url
    :notify?          notify?
    :notify-count     notify-count})
