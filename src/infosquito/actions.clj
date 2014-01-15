@@ -11,7 +11,9 @@
    :icat-user       (cfg/get-icat-user p)
    :icat-password   (cfg/get-icat-pass p)
    :collection-base (cfg/get-base-collection p)
-   :es-url          (cfg/get-es-url p)})
+   :es-url          (cfg/get-es-url p)
+   :notify?         (cfg/notify-enabled? p)
+   :notify-count    (cfg/get-notify-count p)})
 
 (defn reindex
   [props]

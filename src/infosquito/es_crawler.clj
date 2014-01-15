@@ -14,22 +14,35 @@
   [item-type props]
   (esd/scroll-seq (esd/search index (name item-type)
                               :query       (q/match-all)
+                              :fields      ["_id"]
                               :search_type "query_then_fetch"
-                              :scroll      (cfg/get-es-scroll-size props))))
+                              :scroll      "1m"
+                              :size        (cfg/get-es-scroll-size props))))
 
 (defn- delete-item
   [item-type id]
-  (log/warn "deleting index entry for" (name item-type) id)
-  (esd/delete index (name item-type) id))
+  (log/trace "deleting index entry for" (name item-type) id)
+  (try
+    (esd/delete index (name item-type) id)
+    (catch Throwable t
+      (log/error t "unable to remove the index entry for" (name item-type) id))))
+
+(defn- existence-logger
+  [item-type item-exists?]
+  (fn [id]
+    (let [exists? (item-exists? id)]
+      (log/trace (name item-type) id (if exists? "exists" "does not exist"))
+      exists?)))
 
 (defn- purge-deleted-items
   [item-type item-exists? props]
-  (println "Purging non-existent" (name item-type) "entries.")
+  (log/info "purging non-existent" (name item-type) "entries")
   (->> (item-seq item-type props)
-       (map #((notifier 10000 :_id) [%]))
-       (remove item-exists?)
+       (map #((notifier (cfg/notify-enabled? props) (cfg/get-notify-count props) :_id) [%]))
+       (remove (existence-logger item-type item-exists?))
        (map (partial delete-item item-type))
-       (dorun)))
+       (dorun))
+  (log/info (name item-type) "entry purging complete"))
 
 (def ^:private purge-deleted-files (partial purge-deleted-items :file icat/file-exists?))
 (def ^:private purge-deleted-folders (partial purge-deleted-items :folder icat/folder-exists?))

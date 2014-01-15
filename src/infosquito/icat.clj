@@ -145,19 +145,26 @@
      icat-user       - the ICAT database user name
      icat-password   - the ICAT database user password
      collection-base - the root collection contain all the entries of interest
-     es-url          - the base URL to use when connecting to ElasticSearch"
-  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-url]
-    :or   {icat-port "5432"
-           icat-db   "ICAT"
-           es-port   "9200"}}]
+     es-url          - the base URL to use when connecting to ElasticSearch
+     notify?         - true if progress notifications are enabled
+     notify-count    - the number of items to process before logging a notification"
+  [{:keys [icat-host icat-port icat-db icat-user icat-password collection-base es-url
+           notify? notify-count]
+    :or   {icat-port    "5432"
+           icat-db      "ICAT"
+           es-port      "9200"
+           notify?      false
+           notify-count 0}}]
   {:collection-base  collection-base
    :icat-host        icat-host
    :icat-port        icat-port
    :icat-db          icat-db
    :icat-user        icat-user
    :icat-password    icat-password
-   :result-page-size 100
-   :es-url           es-url})
+   :result-page-size 100 ; TODO this needs to be set to some multiple of the index-batch-size
+   :es-url           es-url
+   :notify?          notify?
+   :notify-count     notify-count})
 
 
 (defn get-db-spec
@@ -244,10 +251,13 @@
 ;; TODO for bonus points, determine if any of the entries failed to be indexed and log them
 (defn index-entries
   [indexer entry-type entries]
+  (log/debug "indexing" entry-type (map :id entries))
   (try
-    (es-if/put-bulk indexer index entry-type (map (partial mk-index-doc entry-type) entries))
+    (->>  (map (partial mk-index-doc entry-type) entries)
+          (log/spy :trace)
+          (es-if/put-bulk indexer index entry-type))
     (catch Exception e
-      (println "Bulk index failed for " entry-type entries ":" e))))
+      (log/error e "failed to index" entry-type (map :id entries)))))
 
 
 (def ^:private count-collections-query
@@ -277,18 +287,20 @@
 
 (defn- index-collections
   [cfg indexer]
-  (println "Indexing" (count-collections cfg) "collections.")
+  (log/info "indexing" (count-collections cfg) "collections")
   (->> (partial index-entries indexer dir-type)
-       (notifier 10000)
-       (get-collections cfg)))
+       (notifier (:notify? cfg) (:notify-count cfg))
+       (get-collections cfg))
+  (log/info "collection indexing complete"))
 
 
 (defn- index-data-objects
   [cfg indexer]
-  (println "Indexing" (count-data-objects cfg) "data objects.")
+  (log/info "indexing" (count-data-objects cfg) "data objects")
   (->> (partial index-entries indexer file-type)
-       (notifier 10000)
-       (get-data-objects cfg)))
+       (notifier (:notify? cfg) (:notify-count cfg))
+       (get-data-objects cfg))
+  (log/info "data object indexing complete"))
 
 
 (def ^:private file-existence-query
