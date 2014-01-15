@@ -18,13 +18,16 @@
       (.toFormatter)))
 
 (defn notifier
-  [notify-count f]
-  (let [idx-start      (ref (ct/now))
-        idx-count      (ref 0)
-        get-interval   #(.print period-formatter (.toPeriod (ct/interval @idx-start (ct/now))))]
-    (fn [entry]
-      (let [r (f entry)
-            c (dosync (alter idx-count inc))]
-        (when (zero? (mod c notify-count))
-          (println "Over" c "processed in" (get-interval)))
+  [notify-step f]
+  (let [idx-start    (ref (ct/now))
+        idx-count    (ref 0)
+        notify-count (ref notify-step)
+        get-interval #(.print period-formatter (.toPeriod (ct/interval @idx-start (ct/now))))]
+    (fn [entries]
+      (let [r (f entries)]
+        (dosync
+          (let [c (alter idx-count (partial + (count entries)))]
+            (when (>= c @notify-count)
+              (println "Over" @notify-count "processed in" (get-interval))
+              (alter notify-count (partial + notify-step)))))
         r))))

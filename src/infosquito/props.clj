@@ -4,6 +4,10 @@
   (:import [java.net URL]))
 
 
+(def ^:private DEFAULT-AMQP-PORT        5672)
+(def ^:private DEFAULT-INDEX-BATCH-SIZE 100)
+
+
 (def ^:private prop-names
   ["infosquito.es.host"
    "infosquito.es.port"
@@ -13,7 +17,8 @@
    "infosquito.icat.user"
    "infosquito.icat.pass"
    "infosquito.icat.db"
-   "infosquito.base.collection"
+   "infosquito.base-collection"
+   "infosquito.index-batch-size"
    "infosquito.amqp.host"
    "infosquito.amqp.port"
    "infosquito.amqp.user"
@@ -67,8 +72,17 @@
 
 (defn get-base-collection
   [props]
-  (get props "infosquito.base.collection"))
+  (get props "infosquito.base-collection"))
 
+
+(defn get-index-batch-size
+  [props]
+  (let [size-str (get props "infosquito.index-batch-size")]
+    (try
+      (Math/abs (Integer/parseInt size-str))
+      (catch NumberFormatException e
+        (log/fatal "invalid index batch size:" size-str)
+        DEFAULT-INDEX-BATCH-SIZE))))
 
 (defn get-amqp-host
   [props]
@@ -82,7 +96,7 @@
       (Integer/parseInt port-str)
       (catch NumberFormatException e
         (log/fatal "invalid AMQP port:" port-str)
-        (System/exit 1)))))
+        DEFAULT-AMQP-PORT))))
 
 
 (defn get-amqp-user

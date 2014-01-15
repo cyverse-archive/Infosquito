@@ -42,6 +42,9 @@
 (deftest test-get-base-collection
   (is (= "/iplant/home" (get-base-collection props))))
 
+(deftest test-get-index-batch-size
+  (is (= 100 (get-index-batch-size props))))
+
 (deftest test-get-amqp-host
   (is (= "amqp-host" (get-amqp-host props))))
 

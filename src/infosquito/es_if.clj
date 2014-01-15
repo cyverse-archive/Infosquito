@@ -11,6 +11,9 @@
     
   (put [_ index type id doc-map]
     "Maps to clojurewerkz.elastisch.rest.document/put")
+
+  (put-bulk [_ index type docs]
+    "Bulk indexes a bunch of documents")
   
   (scroll [_ scroll-id keep-alive-time]
     "This handles scrolling a response scroll

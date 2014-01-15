@@ -1,6 +1,7 @@
 (ns infosquito.es
   (:use infosquito.es-if)
   (:require [clojurewerkz.elastisch.rest :as cer]
+            [clojurewerkz.elastisch.rest.bulk :as bulk]
             [clojurewerkz.elastisch.rest.document :as cerd]
             [clojurewerkz.elastisch.rest.index :as ceri]
             [cheshire.custom :as json]
@@ -37,7 +38,10 @@
   
   (put [_ index type id doc-map]
     (cerd/put index type id doc-map))
-  
+
+  (put-bulk [_ index type docs]
+    (bulk/bulk-with-index-and-type index type (bulk/bulk-index docs)))
+
   (scroll [_ scroll-id keep-alive-time]
     (cer_post-text (cer_scroll-url)
                    :query-params {:scroll keep-alive-time} 

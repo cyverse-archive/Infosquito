@@ -182,10 +182,12 @@
 
 
 (defn prepare-entries-for
-  [cfg entries receiver]
-  (letfn [(process-groups [groups] (doseq [e (->> groups (attach-acls cfg) (attach-metadata cfg))]
-                                     (receiver e)))]
-    (dorun (pmap process-groups (partition-all 10 entries)))))
+  [cfg entries group-receiver]
+  (letfn [(process-groups [groups] (->> groups
+                                     (attach-acls cfg)
+                                     (attach-metadata cfg)
+                                     group-receiver))]
+    (dorun (pmap process-groups (partition-all 100 entries)))))
 
 
 (defn get-collections
@@ -239,12 +241,13 @@
         :fileType (:info-type entry)))))
 
 
-(defn- index-entry
-  [indexer entry-type entry]
+;; TODO for bonus points, determine if any of the entries failed to be indexed and log them
+(defn index-entries
+  [indexer entry-type entries]
   (try
-    (es-if/put indexer index entry-type (:id entry) (mk-index-doc entry-type entry))
+    (es-if/put-bulk indexer index entry-type (map (partial mk-index-doc entry-type) entries))
     (catch Exception e
-      (println "Failed to index" entry-type entry ":" e))))
+      (println "Bulk index failed for " entry-type entries ":" e))))
 
 
 (def ^:private count-collections-query
@@ -275,7 +278,7 @@
 (defn- index-collections
   [cfg indexer]
   (println "Indexing" (count-collections cfg) "collections.")
-  (->> (partial index-entry indexer dir-type)
+  (->> (partial index-entries indexer dir-type)
        (notifier 10000)
        (get-collections cfg)))
 
@@ -283,7 +286,7 @@
 (defn- index-data-objects
   [cfg indexer]
   (println "Indexing" (count-data-objects cfg) "data objects.")
-  (->> (partial index-entry indexer file-type)
+  (->> (partial index-entries indexer file-type)
        (notifier 10000)
        (get-data-objects cfg)))
 

@@ -26,7 +26,7 @@
   [item-type item-exists? props]
   (println "Purging non-existent" (name item-type) "entries.")
   (->> (item-seq item-type props)
-       (map (notifier 10000 :_id))
+       (map #((notifier 10000 :_id) [%]))
        (remove item-exists?)
        (map (partial delete-item item-type))
        (dorun)))
