@@ -164,6 +164,7 @@
    :icat-user        icat-user
    :icat-password    icat-password
    :result-page-size (* 8 index-batch-size)
+   :index-batch-size index-batch-size
    :es-url           es-url
    :notify?          notify?
    :notify-count     notify-count})
@@ -190,13 +191,14 @@
   `(sql/with-connection (get-db-spec ~cfg) ~@ops))
 
 
-(defn prepare-entries-for
+(defn- prepare-entries-for
   [cfg entries group-receiver]
   (letfn [(process-groups [groups] (->> groups
                                      (attach-acls cfg)
                                      (attach-metadata cfg)
                                      group-receiver))]
-    (dorun (pmap process-groups (partition-all 100 entries)))))
+    (dorun
+      (pmap process-groups (partition-all (:index-batch-size cfg) entries)))))
 
 
 (defn get-collections
@@ -250,16 +252,20 @@
         :fileType (:info-type entry)))))
 
 
-;; TODO for bonus points, determine if any of the entries failed to be indexed and log them
 (defn index-entries
   [indexer entry-type entries]
   (log/debug "indexing" entry-type (map :id entries))
-  (try
-    (->>  (map (partial mk-index-doc entry-type) entries)
-          (log/spy :trace)
-          (es-if/put-bulk indexer index entry-type))
-    (catch Exception e
-      (log/error e "failed to index" entry-type (map :id entries)))))
+  (letfn [(log-failures [bulk-result]
+            (doseq [{result :index} (:items bulk-result)]
+              (when-not (:ok result) (log/error "failed to index" (:_type result) (:_id result)))))]
+    (try
+      (->>  (map (partial mk-index-doc entry-type) entries)
+            (map #(assoc % :_id (:id %)))
+            (log/spy :trace)
+            (es-if/put-bulk indexer index entry-type)
+            log-failures)
+      (catch Exception e
+        (log/error e "failed to index" entry-type (map :id entries))))))
 
 
 (def ^:private count-collections-query

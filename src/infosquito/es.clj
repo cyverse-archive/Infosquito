@@ -24,6 +24,14 @@
   (cer/url-with-path "_search" "scroll"))
 
 
+; This is how clojurewerkz.elastisch.rest.bulk/bulk-index should have been implemented
+(defn- bulk-index
+  "generates the content for a bulk insert operation, but allows an _id to be provided"
+  ([documents]
+    (let [operations (map bulk/index-operation documents)
+          documents  (map #(dissoc % :_index :_type :_id) documents)]
+      (interleave operations documents))))
+
 ;;
 
 
@@ -40,7 +48,7 @@
     (cerd/put index type id doc-map))
 
   (put-bulk [_ index type docs]
-    (bulk/bulk-with-index-and-type index type (bulk/bulk-index docs)))
+    (bulk/bulk-with-index-and-type index type (bulk-index docs)))
 
   (scroll [_ scroll-id keep-alive-time]
     (cer_post-text (cer_scroll-url)
