@@ -76,9 +76,11 @@
 
 (defn- get-props
   [opts]
-  (if (:config opts)
-    (load-config-from-file (:config opts))
-    (load-config-from-zookeeper)))
+  (let [props-ref (ref (if (:config opts)
+                         (load-config-from-file (:config opts))
+                         (load-config-from-zookeeper)))]
+    (config/log-config props-ref)
+    @props-ref))
 
 
 (defn -main
