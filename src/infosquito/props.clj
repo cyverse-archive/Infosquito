@@ -15,14 +15,14 @@
    "infosquito.icat.host"
    "infosquito.icat.port"
    "infosquito.icat.user"
-   "infosquito.icat.pass"
+   "infosquito.icat.password"
    "infosquito.icat.db"
    "infosquito.base-collection"
    "infosquito.index-batch-size"
    "infosquito.amqp.host"
    "infosquito.amqp.port"
    "infosquito.amqp.user"
-   "infosquito.amqp.pass"
+   "infosquito.amqp.password"
    "infosquito.amqp.reindex-queue"
    "infosquito.notify.enabled"
    "infosquito.notify.count"
@@ -86,7 +86,7 @@
 
 (defn get-icat-pass
   [props]
-  (get props "infosquito.icat.pass"))
+  (get props "infosquito.icat.password"))
 
 
 (defn get-icat-db
@@ -121,7 +121,7 @@
 
 (defn get-amqp-pass
   [props]
-  (get props "infosquito.amqp.pass"))
+  (get props "infosquito.amqp.password"))
 
 
 (defn get-amqp-reindex-queue
