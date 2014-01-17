@@ -3,7 +3,9 @@
   (:require [clojure.string :as string]
             [clojure.tools.logging :as log]
             [clojurewerkz.elastisch.rest :as esr]
+            [clojurewerkz.elastisch.rest.bulk :as bulk]
             [clojurewerkz.elastisch.rest.document :as esd]
+            [clojurewerkz.elastisch.rest.response :as resp]
             [clojurewerkz.elastisch.query :as q]
             [infosquito.icat :as icat]
             [infosquito.props :as cfg]))
@@ -19,13 +21,31 @@
                               :scroll      "1m"
                               :size        (cfg/get-es-scroll-size props))))
 
-(defn- delete-item
-  [item-type id]
-  (log/trace "deleting index entry for" (name item-type) id)
+(defn- log-deletion
+  [item-type item]
+  (log/trace "deleting index entry for" (name item-type) (:_id item)))
+
+(defn- log-failure
+  [item-type item]
+  (log/trace "unable to remove the index entry for" (name item-type) (:_id item)))
+
+(defn- log-failures
+  [res]
+  (->> (:items res)
+       (map :delete)
+       (filter (complement resp/ok?))
+       (map (fn [{id :_id type :_type}] (log-failure type id)))
+       (dorun)))
+
+(defn- delete-items
+  [item-type items]
+  (dorun (map (partial log-deletion item-type) items))
   (try
-    (esd/delete index (name item-type) id)
+    (let [req (bulk/bulk-delete items)
+          res (bulk/bulk-with-index-and-type index (:name item-type) req :refresh true)]
+      (log-failures res))
     (catch Throwable t
-      (log/error t "unable to remove the index entry for" (name item-type) id))))
+      (dorun (map (partial log-failure (name item-type)) (map :id items))))))
 
 (defn- existence-logger
   [item-type item-exists?]
@@ -38,9 +58,10 @@
   [item-type item-exists? props]
   (log/info "purging non-existent" (name item-type) "entries")
   (->> (item-seq item-type props)
-       (mapcat #((notifier (cfg/notify-enabled? props) (cfg/get-notify-count props) :_id) [%]))
-       (remove (existence-logger item-type item-exists?))
-       (map (partial delete-item item-type))
+       (mapcat (comp (notifier (cfg/notify-enabled? props) (cfg/get-notify-count props)) vector))
+       (remove (comp (existence-logger item-type item-exists?) :_id))
+       (partition-all (cfg/get-index-batch-size props))
+       (map (partial delete-items item-type))
        (dorun))
   (log/info (name item-type) "entry purging complete"))
 

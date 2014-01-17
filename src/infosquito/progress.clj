@@ -34,5 +34,7 @@
         r))))
 
 (defn notifier
-  [notifications-enabled? notify-step f]
-  (if notifications-enabled? (create-notifier notify-step f) f))
+  ([notifications-enabled? notify-step]
+     (notifier notifications-enabled? notify-step identity))
+  ([notifications-enabled? notify-step f]
+     (if notifications-enabled? (create-notifier notify-step f) f)))
