@@ -135,6 +135,19 @@
     (map (partial harvest-props avus :metadata) entries)))
 
 
+(defn- filter-indexable-collections
+  [cfg collections]
+  (let [base       (:collection-base cfg)
+        home       (file/path-join base "home")
+        trash      (file/path-join base "trash")
+        home-trash (file/path-join trash "home")
+        indexable? (fn [{collection :id}] (and (not= home collection)
+                                          (not= trash collection)
+                                          (not= home-trash collection)
+                                          (not= home (file/dirname collection))
+                                          (not= home-trash (file/dirname collection))))]
+    (filter indexable? collections)))
+
 (defn init
   "This function creates the map containing the configuration parameters.
 
@@ -213,7 +226,8 @@
    Returns:
      It returns whatever the continuation returns."
   [cfg coll-receiver]
-  (get-colls-wo-acls cfg #(prepare-entries-for cfg % coll-receiver)))
+  (get-colls-wo-acls cfg (comp #(prepare-entries-for cfg % coll-receiver)
+                               (partial filter-indexable-collections cfg))))
 
 
 (defn get-data-objects
