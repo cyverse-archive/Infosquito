@@ -6,7 +6,8 @@
             [clojure.tools.logging :as log]
             [clojure-commons.file-utils :as file]
             [infosquito.es :as es]
-            [infosquito.es-if :as es-if]))
+            [infosquito.es-if :as es-if]
+            [infosquito.index :as index]))
 
 (def ^:private index "data")
 (def ^:private file-type "file")
@@ -137,16 +138,8 @@
 
 (defn- filter-indexable-collections
   [cfg collections]
-  (let [base       (:collection-base cfg)
-        home       (file/path-join base "home")
-        trash      (file/path-join base "trash")
-        home-trash (file/path-join trash "home")
-        indexable? (fn [{collection :id}] (and (not= home collection)
-                                          (not= trash collection)
-                                          (not= home-trash collection)
-                                          (not= home (file/dirname collection))
-                                          (not= home-trash (file/dirname collection))))]
-    (filter indexable? collections)))
+  (filter (comp (partial index/indexable? (:collection-base cfg)) :id) collections))
+
 
 (defn init
   "This function creates the map containing the configuration parameters.

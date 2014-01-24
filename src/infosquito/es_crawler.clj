@@ -8,6 +8,7 @@
             [clojurewerkz.elastisch.rest.response :as resp]
             [clojurewerkz.elastisch.query :as q]
             [infosquito.icat :as icat]
+            [infosquito.index :as index]
             [infosquito.props :as cfg]))
 
 (def ^:private index "data")
@@ -47,26 +48,32 @@
     (catch Throwable t
       (dorun (map (partial log-failure (name item-type)) (map :id items))))))
 
-(defn- existence-logger
-  [item-type item-exists?]
+(defn- retention-logger
+  [item-type keep-item?]
   (fn [id]
-    (let [exists? (item-exists? id)]
-      (log/trace (name item-type) id (if exists? "exists" "does not exist"))
-      exists?)))
+    (let [keep? (keep-item? id)]
+      (log/trace (name item-type) id (if keep? "exists" "does not exist"))
+      keep?)))
 
 (defn- purge-deleted-items
-  [item-type item-exists? props]
+  [item-type keep? props]
   (log/info "purging non-existent" (name item-type) "entries")
   (->> (item-seq item-type props)
        (mapcat (comp (notifier (cfg/notify-enabled? props) (cfg/get-notify-count props)) vector))
-       (remove (comp (existence-logger item-type item-exists?) :_id))
+       (remove (comp (retention-logger item-type keep?) :_id))
        (partition-all (cfg/get-index-batch-size props))
        (map (partial delete-items item-type))
        (dorun))
   (log/info (name item-type) "entry purging complete"))
 
 (def ^:private purge-deleted-files (partial purge-deleted-items :file icat/file-exists?))
-(def ^:private purge-deleted-folders (partial purge-deleted-items :folder icat/folder-exists?))
+
+(defn- purge-deleted-folders
+  [props]
+  (let [index-base (cfg/get-base-collection props)]
+    (purge-deleted-items :folder
+                         #(and (index/indexable? index-base %) (icat/folder-exists? %))
+                         props)))
 
 (defn purge-index
   [props]
