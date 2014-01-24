@@ -88,4 +88,4 @@
   (let [[opts _ help-text] (parse-args args)]
     (cond (:help opts)    (println help-text)
           (:reindex opts) (actions/reindex (get-props opts))
-          :else           (messages/subscribe (get-props opts)))))
+          :else           (messages/repeatedly-connect (get-props opts)))))
