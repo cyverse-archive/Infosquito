@@ -1,4 +1,4 @@
-(defproject org.iplantc/infosquito "1.8.6-SNAPSHOT"
+(defproject org.iplantc/infosquito "1.8.6"
   :description "An ICAT database crawler used to index the contents of iRODS."
   :url "http://www.iplantcollaborative.org"
   :license {:name "BSD"
@@ -21,9 +21,9 @@
                  [com.novemberain/langohr "2.1.0"]
                  [postgresql "9.0-801.jdbc4"]
                  [slingshot "0.10.3"]
-                 [org.iplantc/clojure-commons "1.4.8-SNAPSHOT"]]
+                 [org.iplantc/clojure-commons "1.4.8"]]
   :profiles {:dev {:resource-paths ["dev-resources"]}}
-  :plugins [[org.iplantc/lein-iplant-rpm "1.4.3-SNAPSHOT"]]
+  :plugins [[org.iplantc/lein-iplant-rpm "1.4.3"]]
   :iplant-rpm {:summary      "infosquito"
                :dependencies ["iplant-service-config >= 0.1.0-5"]
                :config-files ["log4j.properties"]
