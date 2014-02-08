@@ -1,5 +1,5 @@
-(defproject infosquito "1.8.6-SNAPSHOT"
-  :description "This is a web service to enable searching of iPlant Collaborative user content."
+(defproject org.iplantc/infosquito "1.8.6-SNAPSHOT"
+  :description "An ICAT database crawler used to index the contents of iRODS."
   :url "http://www.iplantcollaborative.org"
   :license {:name "BSD"
             :url "http://iplantcollaborative.org/sites/default/files/iPLANT-LICENSE.txt"}
