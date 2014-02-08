@@ -1,6 +1,14 @@
-(defproject infosquito "1.8.4-SNAPSHOT"
+(defproject infosquito "1.8.6-SNAPSHOT"
   :description "This is a web service to enable searching of iPlant Collaborative user content."
-  :license {:url "file://LICENSE.txt"}
+  :url "http://www.iplantcollaborative.org"
+  :license {:name "BSD"
+            :url "http://iplantcollaborative.org/sites/default/files/iPLANT-LICENSE.txt"}
+  :scm {:connection "scm:git:git@github.com:iPlantCollaborativeOpenSource/facepalm.git"
+        :developerConnection "scm:git:git@github.com:iPlantCollaborativeOpenSource/facepalm.git"
+        :url "git@github.com:iPlantCollaborativeOpenSource/facepalm.git"}
+  :pom-addition [:developers
+                 [:developer
+                  [:url "https://github.com/orgs/iPlantCollaborativeOpenSource/teams/iplant-devs"]]]
   :aot [infosquito.core]
   :main infosquito.core
   :dependencies [[org.clojure/clojure "1.5.1"]
@@ -13,20 +21,16 @@
                  [com.novemberain/langohr "2.1.0"]
                  [postgresql "9.0-801.jdbc4"]
                  [slingshot "0.10.3"]
-                 [org.iplantc/clj-jargon "0.4.0"]
-                 [org.iplantc/clojure-commons "1.4.7"]]
-  :profiles {:dev {:dependencies   [[org.iplantc/boxy "0.1.2-SNAPSHOT"]]
-                   :resource-paths ["dev-resources"]}}
+                 [org.iplantc/clojure-commons "1.4.8-SNAPSHOT"]]
+  :profiles {:dev {:resource-paths ["dev-resources"]}}
   :plugins [[org.iplantc/lein-iplant-rpm "1.4.3-SNAPSHOT"]]
   :iplant-rpm {:summary      "infosquito"
                :dependencies ["iplant-service-config >= 0.1.0-5"]
                :config-files ["log4j.properties"]
                :config-path  "conf"}
-  :repositories {"iplantCollaborative"
-                 "http://projects.iplantcollaborative.org/archiva/repository/internal/"
-
-                 "sonatype"
-                 "http://oss.sonatype.org/content/repositories/releases/"
-
-                 "renci.repository"
-                 "http://ci-dev.renci.org/nexus/content/repositories/releases/"})
+  :repositories [["sonatype-nexus-snapshots"
+                  {:url "https://oss.sonatype.org/content/repositories/snapshots"}]]
+  :deploy-repositories [["sonatype-nexus-staging"
+                         {:url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"}]
+                        ["renci.repository"
+                         {:url "http://ci-dev.renci.org/nexus/content/repositories/releases/"}]])
