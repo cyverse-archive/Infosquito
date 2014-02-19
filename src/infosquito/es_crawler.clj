@@ -18,7 +18,7 @@
   (esd/scroll-seq (esd/search index (name item-type)
                               :query       (q/match-all)
                               :fields      ["_id"]
-                              :search_type "query_then_fetch"
+                              :search_type "scan"
                               :scroll      "1m"
                               :size        (cfg/get-es-scroll-size props))))
 
