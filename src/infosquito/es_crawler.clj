@@ -13,14 +13,23 @@
 
 (def ^:private index "data")
 
+(defn- seed-item-seq
+  [item-type props]
+  ; The scan search type does not return any results with its first call, unlike all the other
+  ; search types. A second call is needed to kick off the sequence.
+  (let [res (esd/search index (name item-type)
+              :query       (q/match-all)
+              :fields      ["_id"]
+              :search_type "scan"
+              :scroll      "1m"
+              :size        (cfg/get-es-scroll-size props))]
+    (if (resp/any-hits? res)
+      (esd/scroll (:_scroll_id res) :scroll "1m")
+      res)))
+
 (defn- item-seq
   [item-type props]
-  (esd/scroll-seq (esd/search index (name item-type)
-                              :query       (q/match-all)
-                              :fields      ["_id"]
-                              :search_type "scan"
-                              :scroll      "1m"
-                              :size        (cfg/get-es-scroll-size props))))
+  (esd/scroll-seq (seed-item-seq item-type props)))
 
 (defn- log-deletion
   [item-type item]
