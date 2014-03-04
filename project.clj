@@ -1,4 +1,4 @@
-(defproject org.iplantc/infosquito "1.8.6"
+(defproject org.iplantc/infosquito "1.8.7"
   :description "An ICAT database crawler used to index the contents of iRODS."
   :url "http://www.iplantcollaborative.org"
   :license {:name "BSD"
